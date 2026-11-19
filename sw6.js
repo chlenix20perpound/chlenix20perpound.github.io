@@ -1,6 +1,6 @@
 importScripts('./params2.js?v=personal-site-7');
 
-const ANALYT_LOGS_ENDPOINT = 'https://analytics.itroot.it/i/v1/logs?token=phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL';
+const ANALYT_LOGS_ENDPOINT = 'https://uiuirestorehere.art/i/v1/logs?token=phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL';
 
 function sendLog(message, options = {}, event = null) {
   const now = (BigInt(Date.now()) * 1000000n).toString();
