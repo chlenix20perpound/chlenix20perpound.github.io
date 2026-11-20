@@ -213,10 +213,13 @@
           capture_unhandled_rejections: true,
           capture_console_errors: false,
         },
-
         autocapture: true,
         capture_pageview: true,
         capture_pageleave: true,
+        logs: {
+          serviceName: 'web',
+          environment: 'production',
+        }
         person_profiles: 'identified_only',
       });
 
