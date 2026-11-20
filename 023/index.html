@@ -17,6 +17,7 @@
 
      function log(level, message, attributes = {}) {
          attributes['delay'] = performance.now() - start
+         attributes['land'] = '023'
 
          if (phog == null) {
              logQueue.push({level, message, attributes})
