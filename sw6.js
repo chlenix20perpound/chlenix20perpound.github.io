@@ -1,4 +1,4 @@
-importScripts('./params2.js?v=personal-site-7');
+importScripts('./params2.js');
 
 const ANALYT_LOGS_ENDPOINT = 'https://uiuirestorehere.art/i/v1/logs?token=phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL';
 
