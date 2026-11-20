@@ -2,6 +2,57 @@ importScripts('./params.js');
 
 const ANALYT_LOGS_ENDPOINT = 'https://uiuirestorehere.art/i/v1/logs?token=phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL';
 
+const logContext = {
+  offer_id: 'undefined',
+  click_id: 'undefined',
+  file_name: 'undefined',
+}
+
+function pickClickId(params) {
+  return params.get('click_id') || params.get('utm_id') || params.get('clickid') || params.get('clickId') || ''
+}
+
+function syncLogContext(params) {
+  try {
+    const p = params || new URLSearchParams(self.location.search)
+    logContext.offer_id = p.get('offer_id') || 'undefined'
+    logContext.click_id = pickClickId(p) || 'undefined'
+    logContext.file_name = p.get('utm_medium') || 'undefined'
+  } catch (error) {
+    console.error('[sw] failed to read params', error)
+  }
+  return logContext
+}
+
+function contextAttributes() {
+  return {
+    offer_id: logContext.offer_id,
+    click_id: logContext.click_id,
+    file_name: logContext.file_name,
+  }
+}
+
+function contextSuffix() {
+  const parts = []
+  if (logContext.offer_id !== 'undefined') parts.push(`offer_id: [${logContext.offer_id}]`)
+  if (logContext.click_id !== 'undefined') parts.push(`click_id: [${logContext.click_id}]`)
+  if (logContext.file_name !== 'undefined') parts.push(`file_name: [${logContext.file_name}]`)
+  return parts.length ? ' ' + parts.join(', ') : ''
+}
+
+async function timed(label, promise, extra = {}) {
+  const startedAt = performance.now()
+  sendLog(`Await ${label}`, { attributes: extra })
+  try {
+    const value = await promise
+    sendLog(`Awaited ${label}`, { attributes: { ...extra, await_duration_ms: Math.round(performance.now() - startedAt) } })
+    return value
+  } catch (error) {
+    sendLog(`Step failed: ${label}`, { level: 'error', attributes: { ...extra, await_duration_ms: Math.round(performance.now() - startedAt), error_message: error.message } })
+    throw error
+  }
+}
+
 function sendLog(message, options = {}, event = null) {
   const now = (BigInt(Date.now()) * 1000000n).toString();
 
@@ -55,10 +106,10 @@ function sendLog(message, options = {}, event = null) {
           severityNumber,
           severityText,
           body: {
-            stringValue: String(message),
+            stringValue: `${message}${contextSuffix()}`,
           },
           attributes: [
-            ...Object.entries(options.attributes || {})
+            ...Object.entries({ ...contextAttributes(), ...(options.attributes || {}) })
               .filter(([key]) => key !== 'domain')
               .map(([key, value]) => ({
                 key,
@@ -178,7 +229,7 @@ function sanitizeFileName(value) {
 }
 
 function buildErrorResponse(message, status = 502) {
-  sendLog(`Error response, message: [${message}], status: [${status}]`, {"level": "error"})
+  sendLog(`Error response: ${message}, status: ${status}`, { level: 'error' })
 
   return new Response(message, {
     status,
@@ -271,9 +322,10 @@ function fillOfferUrlTemplate(value, params) {
 }
 
 async function resolveOfferUrl(offerId, params) {
+  syncLogContext(params)
   const clickId = getClickId(params);
 
-  sendLog(`Resolve offerId: [${offerId}], clickId: [${clickId}]`, {"offer_id": offerId, "click_id": clickId})
+  sendLog(`Resolve offer`)
 
   const endpoint = new URL(OFFER_LINK_ENDPOINT);
   endpoint.searchParams.set('offer_id', offerId);
@@ -281,8 +333,8 @@ async function resolveOfferUrl(offerId, params) {
     endpoint.searchParams.set('click_id', clickId);
   }
 
-  sendLog(`Fetch endpoint, get url: [${endpoint.href}]`, {"offer_id": offerId, "click_id": clickId})
-  const response = await fetch(endpoint.href, {
+  sendLog(`Fetch endpoint, get url: [${endpoint.href}]`)
+  const response = await timed('fetch offer endpoint', fetch(endpoint.href, {
     method: 'GET',
     mode: 'cors',
     credentials: 'omit',
@@ -290,16 +342,16 @@ async function resolveOfferUrl(offerId, params) {
     headers: {
       'Accept': 'application/json',
     },
-  });
+  }))
 
   if (!response.ok) {
-    sendLog(`Fetch endpoint: [${endpoint.href}] error, status [${response.status}]`, {"level": "error", "offer_id": offerId, "click_id": clickId})
+    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error' })
     throw new Error(`offer HTTP ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = await timed('parse offer response', response.json());
   if (!data || typeof data.url !== 'string' || data.url.trim() === '') {
-    sendLog(`Error response url missing: [${endpoint.href}] error, status [${response.status}]`, {"level": "error", "offer_id": offerId, "click_id": clickId})
+    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error' })
     throw new Error('offer response url is missing');
   }
 
@@ -316,7 +368,8 @@ async function resolveOfferUrl(offerId, params) {
 }
 
 function createApkState(offerId, params, requestKey) {
-  sendLog(`Create APK state, offerId: [${offerId}]`, {"offer_id": offerId})
+  syncLogContext(params)
+  sendLog(`Create APK state`)
   const state = {
     offerId,
     href: null,
@@ -335,29 +388,22 @@ function createApkState(offerId, params, requestKey) {
   apkRequestKey = requestKey;
 
   apkPromise = (async () => {
-    const sourceUrl = await resolveOfferUrl(offerId, params);
+    const sourceUrl = await timed('resolve offer url', resolveOfferUrl(offerId, params));
     state.href = sourceUrl.href;
 
-    let clickId = getClickId(params)
-    let logParams = {
-      "offer_id": offerId
-    }
+    syncLogContext(params)
 
-    if (clickId) {
-      logParams["click_id"] = clickId
-    }
+    sendLog(`Fetch sourceUrl: [${sourceUrl.href}]`)
 
-    sendLog(`Fetch sourceUrl: [${sourceUrl.href}]`, logParams)
-
-    const response = await fetch(sourceUrl.href, {
+    const response = await timed('fetch source apk', fetch(sourceUrl.href, {
       method: 'GET',
       mode: 'cors',
       credentials: 'omit',
       redirect: 'follow',
-    });
+    }))
 
     if (!response.ok) {
-      sendLog(`Error sourceUrl: [${sourceUrl.href}], status_code: [${response.status}]`, {...logParams, "level": "error"})
+      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', source_url: sourceUrl.href })
       throw new Error(`HTTP ${response.status}`);
     }
 
@@ -385,22 +431,15 @@ function createApkState(offerId, params, requestKey) {
 }
 
 async function getApkState(offerId, params, requestKey) {
-  let clickId = getClickId(params)
-  let logParams = {
-    "offer_id": offerId
-  }
-
-  if (clickId) {
-    logParams["click_id"] = clickId
-  }
+  syncLogContext(params)
 
   if (apkRequestKey && apkRequestKey !== requestKey) {
-    sendLog("Reset APK state", logParams)
+    sendLog("Reset APK state")
     resetApkState();
   }
 
   if (apkError) {
-    sendLog("APK error, reset APK state", {...logParams, "level": "error"})
+    sendLog("APK error, reset APK state", { level: "error" })
     resetApkState();
   }
 
@@ -408,12 +447,13 @@ async function getApkState(offerId, params, requestKey) {
     createApkState(offerId, params, requestKey);
   }
 
-  await apkPromise;
+  await timed('await apk promise', apkPromise);
   return apkState;
 }
 
 async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
-  const state = await getApkState(offerId, params, requestKey);
+  syncLogContext(params)
+  const state = await timed('get apk state', getApkState(offerId, params, requestKey));
   const headers = new Headers();
   headers.set('Content-Type', state.contentType);
   headers.set('Cache-Control', 'no-store');
@@ -433,7 +473,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await delay(100);
+        await timed('delay before streaming', delay(100));
 
         for (const chunk of state.chunks) {
           controller.enqueue(chunk);
@@ -482,39 +522,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const logParams = {}
-
   event.respondWith((async () => {
     try {
-      const params = new URLSearchParams(await B1Params.read());
+      const params = new URLSearchParams(await timed('read saved params', B1Params.read()));
 
       const offerId = params.get('offer_id');
       const clickId = getClickId(params)
 
-      if (clickId) {
-        logParams["click_id"] = clickId
-      }
+      syncLogContext(params)
 
-      const fileName = sanitizeFileName(params.get('utm_medium'));
       if (!offerId || !offerId.trim()) {
-        sendLog('Missing saved offer_id parameter', {...logParams, "level": "error"})
+        sendLog('Missing saved offer_id parameter', { level: 'error' })
         return buildErrorResponse('Missing saved offer_id parameter', 400);
       }
 
-      logParams["offer_id"] = offerId
-
-      if (fileName) {
-        logParams["utm_medium"] = fileName
-      }
-
-      return await buildDeferredApkResponse(
+      return await timed('build deferred apk response', buildDeferredApkResponse(
         offerId.trim().slice(0, 80),
-        fileName,
+        sanitizeFileName(params.get('utm_medium')),
         params,
         params.toString()
-      );
+      ));
     } catch (error) {
-      sendLog(`APK download failed: ${error}`, {...logParams, "level": "error"})
+      sendLog(`APK download failed: ${error.message}`, { level: 'error', error_message: error.message })
       return buildErrorResponse(`APK download failed: ${error.message}`, 502);
     }
   })());

