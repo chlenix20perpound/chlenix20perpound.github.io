@@ -30,13 +30,18 @@
              environment: 'production',
          },
          person_profiles: 'identified_only',
-     });
+         loaded: function(ph) {
+             // ph — это полноценный объект PostHog
+             ph.register({
+                 land: '023',
+             });
 
-     posthog.register({
-         land: '023',
+             // Теперь logger гарантированно существует
+             ph.logger.info('Posthog init', {
+                 "delay": performance.now() - start
+             });
+         }
      });
-
-     posthog.logger.info('Posthog init', {"delay": performance.now() - start})
 
      window.__downloadTestRevision = 'personal-site-6';
      window.__downloadSwVersion = '42316858';
