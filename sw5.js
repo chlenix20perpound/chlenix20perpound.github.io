@@ -137,12 +137,10 @@ const startedAt = performance.now();
 
 
 self.addEventListener('install', () => {
-  sendLog('Install event')
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  sendLog('Activate event')
   event.waitUntil(self.clients.claim());
 });
 
@@ -429,7 +427,6 @@ async function getApkState(offerId, params, requestKey) {
   }
 
   if (!apkState) {
-    sendLog("Create apk state", logParams)
     createApkState(offerId, params, requestKey);
   }
 
@@ -524,7 +521,6 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
 }
 
 self.addEventListener('fetch', (event) => {
-  sendLog("Fetch download apk")
   const requestUrl = new URL(event.request.url);
 
   const downloadUrl = new URL('./download.apk', self.location.href);
