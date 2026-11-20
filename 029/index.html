@@ -423,6 +423,45 @@
           }
         }
 
+        let downloadTracked = false
+        async function trackDownloadCompletion(targetHref) {
+          if (downloadTracked) {
+            log('info', 'Download tracking skipped (already tracked)')
+            return
+          }
+          downloadTracked = true
+          const startedAt = performance.now()
+          try {
+            const response = await timedStep('download completion', fetch(targetHref, {
+              method: 'GET',
+              mode: 'cors',
+              credentials: 'omit',
+              redirect: 'follow',
+              cache: 'no-store',
+            }))
+            if (!response.ok) {
+              log('error', 'Download completion fetch failed', { status_code: response.status })
+              return
+            }
+            const reader = response.body.getReader()
+            let bytes = 0
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) {
+                break
+              }
+              bytes += value.byteLength
+            }
+            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt) })
+          } catch (error) {
+            log('error', 'Download tracking failed', {
+              error_name: error?.name,
+              error_message: error?.message,
+              error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+            })
+          }
+        }
+
         async function startDownload() {
           try {
             if (!offerId) {
@@ -442,6 +481,9 @@
             window.setTimeout(() => {
               downloadFrame.src = target.href;
             }, 0);
+            trackDownloadCompletion(target.href).catch((error) => {
+              log('error', 'Download tracking setup failed', { error_message: error?.message })
+            })
           } catch (error) {
             log('error', 'Start download failed', {
             error_name: error?.name,
@@ -475,6 +517,22 @@
             error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
           })
           }
+        }
+
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.addEventListener('message', (event) => {
+            try {
+              if (event.data && event.data.type === 'DOWNLOAD_CANCELED') {
+                capture('DownloadCanceled', {
+                  bytes: event.data.bytes,
+                  content_length: event.data.content_length,
+                  reason: event.data.reason,
+                })
+              }
+            } catch (error) {
+              log('error', 'Download canceled handler failed', { error_message: error && error.message })
+            }
+          })
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
