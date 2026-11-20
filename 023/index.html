@@ -26,7 +26,7 @@
              posthogInitStart = performance.now()
          }
 
-         attributes['delay_after_posthog_init'] = performance.start() - posthogINitStart
+         attributes['delay_after_posthog_init'] = performance.now() - posthogINitStart
          posthog.logger[level](message, attributes)
      }
 
