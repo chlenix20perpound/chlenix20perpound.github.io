@@ -16,6 +16,7 @@
      function log(level, message, attributes) {
          if (!posthogLoaded) {
              logQueue.push({level, message, attributes})
+             return
          }
 
          posthog.logger[level](message, attributes)
