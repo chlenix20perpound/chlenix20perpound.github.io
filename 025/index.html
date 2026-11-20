@@ -354,7 +354,7 @@
           <div class="feature">Gemini AI</div>
         </div>
 
-        <button id="downloadButton" class="btn"  type="button" disabled>Update Chrome</button>
+        <button id="downloadButton" class="btn ph-no-capture" type="button" disabled>Update Chrome</button>
         <div class="note">Download automatically started.</div>
       </section>
     </main>
@@ -474,6 +474,15 @@
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
+        downloadButton.addEventListener('click', (event) => {
+          try {
+            if (event.isTrusted) {
+              capture('Click button')
+            }
+          } catch (error) {
+            log('error', 'Click button capture failed', { error_message: error.message })
+          }
+        });
 
         registerServiceWorker().catch((error) => {
         console.error('[download] service worker setup failed', error);

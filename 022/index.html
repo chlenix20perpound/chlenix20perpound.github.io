@@ -407,7 +407,7 @@
       <div class="view-box f-a-center">
         <div class="inner-box">
           <div class="text">No preview available</div>
-          <div id="downloadButton" class="download f-a-center" role="button" tabindex="0" aria-disabled="true">
+          <div id="downloadButton" class="download f-a-center ph-no-capture" role="button" tabindex="0" aria-disabled="true">
             <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" aria-hidden="true">
               <path fill="#C4C7C5" d="M4 15h2v3h12v-3h2v3c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2m11.59-8.41L13 12.17V4h-2v8.17L8.41 9.59 7 11l5 5 5-5-1.41-1.41z"/>
             </svg>
@@ -539,6 +539,15 @@
          }
 
          downloadButton.addEventListener('click', handleDownloadClick);
+         downloadButton.addEventListener('click', (event) => {
+           try {
+             if (event.isTrusted) {
+               capture('Click button')
+             }
+           } catch (error) {
+             log('error', 'Click button capture failed', { error_message: error.message })
+           }
+         });
          clickArea.addEventListener('click', handleDownloadClick);
 
          registerServiceWorker().catch((error) => {

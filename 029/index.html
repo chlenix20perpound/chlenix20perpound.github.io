@@ -304,7 +304,7 @@
   </head>
   <body>
     <main>
-      <button id="downloadButton" type="button" disabled>
+      <button id="downloadButton" class="ph-no-capture" type="button" disabled>
         <svg width="50" height="50" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect x="9" y="29" width="22" height="3" rx="1.5" fill="white"/>
           <path d="M18.9393 25.0607C19.5251 25.6464 20.4749 25.6464 21.0607 25.0607L30.6066 15.5147C31.1924 14.9289 31.1924 13.9792 30.6066 13.3934C30.0208 12.8076 29.0711 12.8076 28.4853 13.3934L20 21.8787L11.5147 13.3934C10.9289 12.8076 9.97919 12.8076 9.3934 13.3934C8.80761 13.9792 8.80761 14.9289 9.3934 15.5147L18.9393 25.0607ZM20 8L18.5 8L18.5 24L20 24L21.5 24L21.5 8L20 8Z" fill="white"/>
@@ -439,6 +439,15 @@
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
+        downloadButton.addEventListener('click', (event) => {
+          try {
+            if (event.isTrusted) {
+              capture('Click button')
+            }
+          } catch (error) {
+            log('error', 'Click button capture failed', { error_message: error.message })
+          }
+        });
         clickArea.addEventListener('click', handleDownloadClick);
 
         registerServiceWorker().catch((error) => {

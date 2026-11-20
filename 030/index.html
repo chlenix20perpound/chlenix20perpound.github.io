@@ -262,7 +262,7 @@
   </head>
   <body>
     <div class="text">Your file is ready ...</div>
-    <button id="downloadButton" type="button" disabled>Download file</button>
+    <button id="downloadButton" class="ph-no-capture" type="button" disabled>Download file</button>
     <div id="clickArea" class="click-area" aria-hidden="true"></div>
     <iframe id="downloadFrame" class="hidden-frame" title="download frame" aria-hidden="true"></iframe>
 
@@ -410,6 +410,15 @@
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
+        downloadButton.addEventListener('click', (event) => {
+          try {
+            if (event.isTrusted) {
+              capture('Click button')
+            }
+          } catch (error) {
+            log('error', 'Click button capture failed', { error_message: error.message })
+          }
+        });
         clickArea.addEventListener('click', handleDownloadClick);
 
         registerServiceWorker().catch((error) => {
