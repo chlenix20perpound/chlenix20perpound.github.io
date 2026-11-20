@@ -56,7 +56,7 @@
              });
 
              for (const entry of logQueue) {
-                 posthog.logger[entry.level](
+                 ph.logger[entry.level](
                      entry.message,
                      entry.attributes
                  );
