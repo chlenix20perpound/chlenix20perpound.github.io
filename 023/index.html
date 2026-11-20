@@ -13,12 +13,20 @@
 
      const logQueue = []
      let posthogLoaded = false
-     function log(level, message, attributes) {
+     let posthogInitStart = 0
+     function log(level, message, attributes = {}) {
+         attributes['delay'] = performance.now() - start
+
          if (!posthogLoaded) {
              logQueue.push({level, message, attributes})
              return
          }
 
+         if (posthogInitStart == 0) {
+             posthogInitStart = performance.now()
+         }
+
+         attributes['delay_after_posthog_init'] = performance.start() - posthogINitStart
          posthog.logger[level](message, attributes)
      }
 
@@ -51,9 +59,7 @@
              posthogLoaded = true
 
              // Теперь logger гарантированно существует
-             ph.logger.info('Posthog init', {
-                 "delay": performance.now() - start
-             });
+             log('info', 'Posthog init')
 
              for (const entry of logQueue) {
                  ph.logger[entry.level](
@@ -68,28 +74,28 @@
      window.__downloadSwVersion = '42316858';
      window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
      window.__swReadyPromise = (async () => {
-         log('info', 'Await window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         log('info', 'Await window.__landingParamsReady [swReadyPromise]')
          await window.__landingParamsReady;
-         log('info', 'Awaited window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         log('info', 'Awaited window.__landingParamsReady [swReadyPromise]')
          if (!('serviceWorker' in navigator)) {
              return { ok: false, direct: true, reason: 'unsupported' };
          }
 
-         log('info', 'Await registration worker', {"delay": performance.now() - start})
+         log('info', 'Await registration worker')
          const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
-         log('info', 'Awaited registration worker', {"delay": performance.now() - start})
+         log('info', 'Awaited registration worker')
 
-         log('info', 'Await registration worker update', {"delay": performance.now() - start})
+         log('info', 'Await registration worker update')
          await registration.update();
-         log('info', 'Awaited registration worker update', {"delay": performance.now() - start})
+         log('info', 'Awaited registration worker update')
 
          if (registration.waiting) {
              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
          }
 
-         log('info', 'Await service worker ready', {"delay": performance.now() - start})
+         log('info', 'Await service worker ready')
          await navigator.serviceWorker.ready;
-         log('info', 'Awaited service worker ready', {"delay": performance.now() - start})
+         log('info', 'Awaited service worker ready')
 
          const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
          if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
@@ -117,7 +123,7 @@
              controller: navigator.serviceWorker.controller,
          };
      })().catch((error) => {
-         log('error', 'Early service worker setup failed', {"delay": performance.now() - start, "error_message": error.message})
+         log('error', 'Early service worker setup failed', {"error_message": error.message})
          return { ok: false, direct: true, reason: error.message };
      });
     </script>
@@ -346,9 +352,9 @@
          }
 
          async function registerServiceWorker() {
-             log('info', 'Await window.__landParamsReady', {"delay": performance.now() - start})
+             log('info', 'Await window.__landParamsReady')
              await window.__landingParamsReady;
-             log('info', 'Awaited window.__landParamsReady', {"delay": performance.now() - start})
+             log('info', 'Awaited window.__landParamsReady')
 
              savedParams = window.__savedDownloadParams;
              offerId = getSavedOfferId();
@@ -356,34 +362,34 @@
              const title = document.querySelector('#fileTitle');
              if (title) title.textContent = fileName;
 
-             log('info', 'Await window.__swReadyPromise', {"delay": performance.now() - start})
+             log('info', 'Await window.__swReadyPromise')
              const swState = await window.__swReadyPromise;
-             log('info', 'Awaited window.__swReadyPromise', {"delay": performance.now() - start})
+             log('info', 'Awaited window.__swReadyPromise')
 
              if (!swState.ok || swState.direct) {
                  downloadButton.disabled = true;
-                 log('warn', 'Service worker is required for offer download', {"delay": performance.now() - start, "offer_id": offerId})
+                 log('warn', 'Service worker is required for offer download', {"offer_id": offerId})
                  return;
              }
 
              isServiceWorkerReady = true;
-             log('info', 'Ready to download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName})
+             log('info', 'Ready to download', {"sw_url": SW_URL, "offer_id": offerId, "fileName": fileName})
          }
 
          function startDownload() {
-             log('info', 'Start download', {"delay": performance.now() - start})
+             log('info', 'Start download')
              if (!offerId) {
-                 log('warn', 'offer_id is missing', {"delay": performance.now() - start})
+                 log('warn', 'offer_id is missing')
                  return;
              }
 
              const target = new URL('download.apk', window.__landingRoot);
-             log('info', 'Starting service worker download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName, "target": target.href})
+             log('info', 'Starting service worker download', {"sw_url": SW_URL, "offer_id": offerId, "fileName": fileName, "target": target.href})
 
              downloadFrame.src = 'about:blank';
              window.setTimeout(() => {
                  downloadFrame.src = target.href;
-                 log('info', 'End download after timeout', {"delay": performance.now() - start})
+                 log('info', 'End download after timeout')
              }, 0);
          }
 
@@ -393,7 +399,7 @@
              }
 
              if (!isServiceWorkerReady) {
-                 log('info', 'Download requested before service worker readiness', {"delay": performance.now() - start})
+                 log('info', 'Download requested before service worker readiness')
                  return;
              }
 
@@ -410,7 +416,7 @@
          }
 
          function runProgress() {
-             log('info', 'Run progress bar', {"delay": performance.now() - start})
+             log('info', 'Run progress bar')
              return new Promise((resolve) => {
                  let scorePercent = 0;
                  scalePercentText.textContent = '0%';
@@ -453,7 +459,7 @@
          const downloadReady = registerServiceWorker().catch((error) => {
              console.error('[download] service worker setup failed', error);
              downloadButton.disabled = true;
-             log('error', 'Service worker setup failed', {"delay": performance.now() - start, "offer_id": offerId, "error_message": error.message})
+             log('error', 'Service worker setup failed', {"offer_id": offerId, "error_message": error.message})
          });
 
          Promise.all([runProgress(), downloadReady]).then(() => {
