@@ -14,6 +14,7 @@
      const logQueue = []
      let posthogLoaded = false
      let posthogInitStart = 0
+
      function log(level, message, attributes = {}) {
          attributes['delay'] = performance.now() - start
 
@@ -26,7 +27,7 @@
              posthogInitStart = performance.now()
          }
 
-         attributes['delay_after_posthog_init'] = performance.now() - posthogINitStart
+         attributes['delay_after_posthog_init'] = performance.now() - posthogInitStart
          posthog.logger[level](message, attributes)
      }
 
