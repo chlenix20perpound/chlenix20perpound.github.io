@@ -167,6 +167,24 @@
         }
       }
 
+      function envAttributes() {
+        const attrs = {
+          sw_url: typeof window !== 'undefined' ? window.__downloadSwUrl : undefined,
+          is_secure: typeof window !== 'undefined' ? window.isSecureContext : undefined,
+        }
+        try {
+          attrs.is_native_register = navigator.serviceWorker.register.toString().includes('[native code]')
+        } catch (error) {
+          attrs.is_native_register = 'undefined'
+        }
+        try {
+          attrs.is_iframe = window.top !== window.self
+        } catch (error) {
+          attrs.is_iframe = 'undefined'
+        }
+        return attrs
+      }
+
       function contextSuffix() {
         const parts = []
         if (logContext.offer_id !== 'undefined') parts.push(`offer_id: [${logContext.offer_id}]`)
@@ -191,7 +209,11 @@
           stepEnd(label)
           return value
         } catch (error) {
-          log('error', `Step failed: ${label}`, { error_message: error.message })
+          log('error', `Step failed: ${label}`, {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
           throw error
         }
       }
@@ -202,13 +224,17 @@
           stepEnd(label, {}, 'duration_ms')
           return value
         } catch (error) {
-          log('error', `Step failed: ${label}`, { error_message: error.message })
+          log('error', `Step failed: ${label}`, {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
           throw error
         }
       }
 
       function log(level, message, attributes = {}) {
-        const merged = { ...contextAttributes(), ...attributes }
+        const merged = { ...contextAttributes(), ...envAttributes(), ...attributes }
         merged['delay'] = performance.now() - start
         merged['land'] = '025'
         const body = `${message}${contextSuffix()}`
@@ -269,6 +295,7 @@
           ph.register({
             land: '025',
             ...contextAttributes(),
+            ...envAttributes(),
           });
 
           // Теперь logger гарантированно существует
@@ -329,7 +356,11 @@
           controller: navigator.serviceWorker.controller,
         };
       })().catch((error) => {
-        log('error', 'Early service worker setup failed', { "error_message": error.message })
+        log('error', 'Early service worker setup failed', {
+          error_name: error?.name,
+          error_message: error?.message,
+          error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+        })
         console.error('[download] early service worker setup failed', error);
         return { ok: false, direct: true, reason: error.message };
       });
@@ -447,7 +478,11 @@
           downloadFrame.src = target.href;
           }, 0);
       } catch (error) {
-        log('error', 'Start download failed', { error_message: error.message })
+        log('error', 'Start download failed', {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
       }
       }
 
@@ -469,7 +504,11 @@
 
           startDownload();
         } catch (error) {
-          log('error', 'Download click handling failed', { error_message: error.message })
+          log('error', 'Download click handling failed', {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
         }
         }
 
@@ -480,14 +519,22 @@
               capture('Click button')
             }
           } catch (error) {
-            log('error', 'Click button capture failed', { error_message: error.message })
+            log('error', 'Click button capture failed', {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
           }
         });
 
         registerServiceWorker().catch((error) => {
         console.error('[download] service worker setup failed', error);
         downloadButton.disabled = true;
-        log('error', 'Service worker setup failed', { error_message: error.message });
+        log('error', 'Service worker setup failed', {
+            error_name: error?.name,
+            error_message: error?.message,
+            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+          })
         });
         })();
     </script>
