@@ -40,6 +40,32 @@ function contextSuffix() {
   return parts.length ? ' ' + parts.join(', ') : ''
 }
 
+function notifyDownloadCanceled(state, reason) {
+  try {
+    const attrs = {
+      bytes: state ? state.bytes : 0,
+      content_length: state ? state.contentLength : null,
+      reason: reason === undefined ? 'undefined' : String(reason),
+    }
+    sendLog('Download canceled by client', { level: 'warn', attributes: attrs })
+    self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({
+          type: 'DOWNLOAD_CANCELED',
+          offer_id: logContext.offer_id,
+          click_id: logContext.click_id,
+          file_name: logContext.file_name,
+          ...attrs,
+        })
+      }
+    }).catch((error) => {
+      console.error('[sw] cancel notify failed', error)
+    })
+  } catch (error) {
+    console.error('[sw] cancel notify failed', error)
+  }
+}
+
 async function timed(label, promise, extra = {}) {
   const startedAt = performance.now()
   sendLog(`Await ${label}`, { attributes: extra })
@@ -545,10 +571,11 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
         controller.error(error);
       }
     },
-    cancel() {
+    cancel(reason) {
       if (subscriber && state) {
         state.subscribers.delete(subscriber);
       }
+      notifyDownloadCanceled(state, reason);
     },
   });
 
