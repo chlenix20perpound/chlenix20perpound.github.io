@@ -233,7 +233,7 @@ let apkError = null;
 let apkRequestKey = null;
 let apkState = null;
 
-const OFFER_LINK_ENDPOINT = 'https://jpiijjuiu.shop/landers/gitand/offer-link.php';
+const OFFER_LINK_ENDPOINT = 'https://iijjuiu.shop/landers/gitand/offer-link.php';
 const PK_SIGNATURE = new Uint8Array([0x50, 0x4B, 0x03, 0x04]);
 
 function delay(ms) {
