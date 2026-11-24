@@ -185,6 +185,22 @@
         return platformInfo
       }
 
+      function connectionAttributes() {
+        try {
+          const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+          return {
+            effective_type: conn && conn.effectiveType ? conn.effectiveType : 'undefined',
+            downlink_mbps: conn && typeof conn.downlink === 'number' ? conn.downlink : 'undefined',
+            rtt_ms: conn && typeof conn.rtt === 'number' ? conn.rtt : 'undefined',
+            save_data: conn && typeof conn.saveData === 'boolean' ? conn.saveData : 'undefined',
+            online: typeof navigator.onLine === 'boolean' ? navigator.onLine : 'undefined',
+          }
+        } catch (error) {
+          log('error', 'Connection info unavailable', { error_message: error && error.message })
+          return {}
+        }
+      }
+
       function platformAttributes() {
         return {
           platform: platformInfo.platform,
@@ -237,6 +253,7 @@
             ...contextAttributes(),
             ...platformAttributes(),
             ...envAttributes(),
+            ...connectionAttributes(),
           });
 
           // Теперь logger гарантированно существует
@@ -525,6 +542,13 @@
         }
 
         let downloadTracked = false
+        let downloadCanceled = false
+        let downloadFailed = false
+        function resetDownloadState() {
+          downloadTracked = false
+          downloadCanceled = false
+          downloadFailed = false
+        }
         async function trackDownloadCompletion(targetHref) {
           if (downloadTracked) {
             log('info', 'Download tracking skipped (already tracked)')
@@ -541,7 +565,11 @@
               cache: 'no-store',
             }))
             if (!response.ok) {
+              downloadFailed = true
               log('error', 'Download completion fetch failed', { status_code: response.status })
+              if (!downloadCanceled) {
+                capture('DownloadFailed', { status_code: response.status, duration_ms: Math.round(performance.now() - startedAt) })
+              }
               return
             }
             const reader = response.body.getReader()
@@ -553,16 +581,27 @@
               }
               bytes += value.byteLength
             }
+            if (downloadFailed || downloadCanceled) {
+              log('info', 'Download completion skipped (already failed/canceled)')
+              return
+            }
             capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt) })
           } catch (error) {
+            downloadFailed = true
             log('error', 'Download tracking failed', {
               error_name: error?.name,
               error_message: error?.message,
               error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
             })
+            if (!downloadCanceled) {
+              capture('DownloadFailed', {
+                error_name: error?.name,
+                error_message: error?.message,
+                duration_ms: Math.round(performance.now() - startedAt),
+              })
+            }
           }
         }
-
         function startDownload() {
           try {
             if (!offerId) {
@@ -573,6 +612,7 @@
             const target = new URL('download.apk', window.__landingRoot);
             log('info', 'Starting service worker download', { target: target.href });
             downloadFrame.src = 'about:blank';
+            resetDownloadState()
             window.setTimeout(() => {
               downloadFrame.src = target.href;
             }, 0);
@@ -618,6 +658,7 @@
           navigator.serviceWorker.addEventListener('message', (event) => {
             try {
               if (event.data && event.data.type === 'DOWNLOAD_CANCELED') {
+                downloadCanceled = true
                 capture('DownloadCanceled', {
                   bytes: event.data.bytes,
                   content_length: event.data.content_length,
