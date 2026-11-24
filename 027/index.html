@@ -151,6 +151,65 @@
         phog.capture(event, merged)
       }
 
+      const platformInfo = {
+        platform: 'undefined',
+        platform_version: 'undefined',
+      }
+
+      function detectPlatformSync() {
+        try {
+          const ua = navigator.userAgent || ''
+          let platform = (navigator.userAgentData && navigator.userAgentData.platform) || ''
+          let platformVersion = ''
+
+          if (!platform) {
+            if (/Android/i.test(ua)) platform = 'Android'
+            else if (/iPhone|iPad|iPod/i.test(ua)) platform = 'iOS'
+            else if (/Windows/i.test(ua)) platform = 'Windows'
+            else if (/Mac OS X/i.test(ua)) platform = 'macOS'
+            else if (/Linux/i.test(ua)) platform = 'Linux'
+          }
+
+          const match = ua.match(/Android\s+([\d.]+)/i)
+            || ua.match(/Windows NT\s+([\d.]+)/i)
+            || ua.match(/Mac OS X\s+([\d_]+)/i)
+            || ua.match(/CPU (?:iPhone )?OS\s+([\d_]+)/i)
+
+          if (match) platformVersion = match[1].replace(/_/g, '.')
+
+          platformInfo.platform = platform || 'undefined'
+          platformInfo.platform_version = platformVersion || 'undefined'
+        } catch (error) {
+          log('error', 'Platform detection failed', { error_message: error && error.message })
+        }
+        return platformInfo
+      }
+
+      function platformAttributes() {
+        return {
+          platform: platformInfo.platform,
+          platform_version: platformInfo.platform_version,
+        }
+      }
+
+      async function refreshPlatformAsync() {
+        try {
+          if (!(navigator.userAgentData && navigator.userAgentData.getHighEntropyValues)) {
+            return
+          }
+          const hints = await navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion'])
+          if (hints && hints.platform) platformInfo.platform = hints.platform
+          if (hints && hints.platformVersion) platformInfo.platform_version = hints.platformVersion
+          if (phog) {
+            phog.register(platformAttributes())
+          }
+        } catch (error) {
+          log('error', 'Client Hints unavailable', { error_message: error && error.message })
+        }
+      }
+
+      detectPlatformSync()
+
       posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
         api_host: 'https://uiuirestorehere.art',
         advanced_disable_flags: true,
@@ -176,6 +235,7 @@
           ph.register({
             land: '027',
             ...contextAttributes(),
+            ...platformAttributes(),
             ...envAttributes(),
           });
 
@@ -183,6 +243,7 @@
           log('info', 'Posthog init')
 
           phog = ph
+          refreshPlatformAsync()
 
           for (const entry of logQueue) {
             ph.logger[entry.level](entry.message, entry.attributes);
