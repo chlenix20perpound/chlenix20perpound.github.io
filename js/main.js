@@ -431,6 +431,8 @@
 
         downloadTracked = true;
         const startedAt = performance.now();
+        let bytesRead = 0;
+        let contentLength = null;
 
         const isCurrentAttempt = () => attemptId === undefined || attemptId === downloadId;
 
@@ -471,6 +473,11 @@
 
             const response = attempt.response;
 
+            const rawLength = Number(response.headers.get('Content-Length'));
+            contentLength = (response.headers.get('Content-Length') !== null && Number.isSafeInteger(rawLength) && rawLength > 0)
+                ? rawLength
+                : null;
+
             if (!response.ok) {
                 downloadFailed = true;
                 const details = downloadDiag(attempt, targetHref);
@@ -489,6 +496,7 @@
                     break;
                 }
                 bytes += value.byteLength;
+                bytesRead = bytes;
             }
 
             if (!isCurrentAttempt()) {
@@ -508,6 +516,11 @@
 
             const diag = {
                 request_url: targetHref,
+                bytes_read: bytesRead,
+                content_length: contentLength === null ? 'undefined' : contentLength,
+                percent: (typeof contentLength === 'number' && contentLength > 0)
+                    ? Math.round((bytesRead / contentLength) * 100)
+                    : 'undefined',
                 sw_controlled: !!navigator.serviceWorker.controller,
                 sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
             };

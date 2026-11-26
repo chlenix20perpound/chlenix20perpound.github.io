@@ -350,12 +350,20 @@ function notifySubscribers(state, method, value) {
 
 async function pumpApkBody(state, response) {
   const reader = response.body.getReader();
+  const startedAt = performance.now();
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
         state.done = true;
+        sendLog('Upstream apk stream completed', { attributes: {
+          source_url: state.href || 'undefined',
+          bytes: state.bytes,
+          chunk_count: state.chunkCount,
+          content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+          duration_ms: Math.round(performance.now() - startedAt),
+        } })
         notifySubscribers(state, 'close');
         state.subscribers.clear();
         return;
@@ -369,6 +377,17 @@ async function pumpApkBody(state, response) {
   } catch (error) {
     state.error = error;
     apkError = error;
+    const contentLength = Number(state.contentLength);
+    sendLog('Upstream apk stream failed', { level: 'error', attributes: errorAttributes(error, {
+      source_url: state.href || 'undefined',
+      bytes: state.bytes,
+      chunk_count: state.chunkCount,
+      content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+      percent: (isUsableContentLength(state.contentLength) && contentLength > 0)
+        ? Math.round((state.bytes / contentLength) * 100)
+        : 'undefined',
+      duration_ms: Math.round(performance.now() - startedAt),
+    }) })
     notifySubscribers(state, 'error', error);
     state.subscribers.clear();
     throw error;
