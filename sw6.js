@@ -311,8 +311,11 @@ function sanitizeFileName(value) {
   return `${base}.${timestamp}.apk`;
 }
 
-function buildErrorResponse(message, status = 502, servedId) {
-  sendLog(`Error response: ${message}, status: ${status}`, { level: 'error' })
+function buildErrorResponse(message, status = 502, servedId, error) {
+  sendLog(`Error response: ${message}, status: ${status}`, { level: 'error', attributes: {
+    served_id: servedId || 'undefined',
+    ...errorAttributes(error),
+  } })
 
   const headers = {
     'Content-Type': 'text/plain; charset=utf-8',
@@ -568,6 +571,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
 
   let subscriber = null;
   let state = null
+  let canceled = false
 
   let skipped = 0
   const trimFirstFour = (chunk) => {
@@ -596,7 +600,13 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
 
         state = await timed('get apk state', getApkState(offerId, params, requestKey));
 
+        if (canceled) {
+          sendLog('Stream canceled before first enqueue', { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+          return;
+        }
+
         for (const chunk of state.chunks) {
+          if (canceled) return;
           const out = trimFirstFour(chunk);
 
           if (out) {
@@ -605,34 +615,46 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
         }
 
         if (state.error) {
-          controller.error(state.error);
+          if (!canceled) controller.error(state.error);
           return;
         }
 
         if (state.done) {
-          controller.close();
+          if (!canceled) controller.close();
           return;
         }
 
         subscriber = {
           enqueue: (chunk) => {
+            if (canceled) return;
             const out = trimFirstFour(chunk);
 
             if (out) {
               controller.enqueue(out);
             }
           },
-          close: () => controller.close(),
-          error: (error) => controller.error(error),
+          close: () => {
+            if (!canceled) controller.close();
+          },
+          error: (error) => {
+            if (!canceled) controller.error(error);
+          },
         };
 
         state.subscribers.add(subscriber);
       } catch (error) {
-        sendLog(`buildDeferredResponse failed: ${error && error.message}`, { level: 'error', attributes: errorAttributes(error) })
-        controller.error(error);
+        if (!canceled) {
+          sendLog(`buildDeferredResponse failed: ${error && error.message}`, { level: 'error', attributes: errorAttributes(error) })
+          try {
+            controller.error(error);
+          } catch (ignored) {
+            // stream already closed by the client
+          }
+        }
       }
     },
     cancel(reason) {
+      canceled = true
       if (subscriber && state) {
         state.subscribers.delete(subscriber);
       }
@@ -700,7 +722,7 @@ self.addEventListener('fetch', (event) => {
       ));
     } catch (error) {
       sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: errorAttributes(error) })
-      return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId);
+      return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId, error);
     }
   })());
 });
