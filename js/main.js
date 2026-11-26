@@ -442,10 +442,26 @@
     }
 
     function failureReasonAttributes(info) {
-        const reason = failureReason(info);
-        const out = { reason };
+        let reason = failureReason(info);
+        const quality = networkQuality();
+        const out = {};
+
         if (reason === 'network') {
-            out.network_quality = networkQuality();
+            const bytes = Number(info.bytes_read);
+            const hadBytes = Number.isFinite(bytes) && bytes > 0;
+            if (quality === 'poor') {
+                // User's connection is the likely cause.
+                reason = 'user_network';
+            } else if (hadBytes) {
+                // The transfer started and then dropped on a healthy connection:
+                // the upstream CDN stream broke.
+                reason = 'cdn_stream_break';
+            }
+        }
+
+        out.reason = reason;
+        if (reason === 'network' || reason === 'user_network' || reason === 'cdn_stream_break') {
+            out.network_quality = quality;
         }
         return out;
     }

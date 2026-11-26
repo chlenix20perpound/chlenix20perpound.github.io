@@ -1,7 +1,9 @@
 importScripts('./params.js');
 
 const ANALYT_LOGS_ENDPOINT = 'https://uiuirestorehere.art/i/v1/logs?token=phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL';
-
+const UPSTREAM_MAX_RETRIES = 2
+const OFFER_LINK_ENDPOINT = 'https://iijjuiu.shop/landers/gitand/offer-link.php';
+const PK_SIGNATURE = new Uint8Array([0x50, 0x4B, 0x03, 0x04]);
 const logContext = {
   offer_id: 'undefined',
   click_id: 'undefined',
@@ -270,9 +272,6 @@ let apkError = null;
 let apkRequestKey = null;
 let apkState = null;
 
-const OFFER_LINK_ENDPOINT = 'https://iijjuiu.shop/landers/gitand/offer-link.php';
-const PK_SIGNATURE = new Uint8Array([0x50, 0x4B, 0x03, 0x04]);
-
 function delay(ms) {
   sendLog(`Delay [${ms}]`)
   return new Promise((resolve) => {
@@ -375,49 +374,98 @@ function notifySubscribers(state, method, value) {
   });
 }
 
-async function pumpApkBody(state, response) {
-  const reader = response.body.getReader();
-  const startedAt = performance.now();
+// Read an upstream APK response into state, skipping bytes we already have
+// (the source CDN ignores Range, so a retry re-fetches from the start).
+async function readUpstreamIntoState(state, response) {
+  const reader = response.body.getReader()
+  let skip = state.bytes
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) return
+    let chunk = value
+    if (skip > 0) {
+      if (chunk.byteLength <= skip) {
+        skip -= chunk.byteLength
+        continue
+      }
+      chunk = (typeof chunk.subarray === 'function') ? chunk.subarray(skip) : chunk.slice(skip)
+      skip = 0
+    }
+    state.chunks.push(chunk)
+    state.bytes += chunk.byteLength
+    state.chunkCount += 1
+    notifySubscribers(state, 'enqueue', chunk)
+  }
+}
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        state.done = true;
-        sendLog('Upstream apk stream completed', { attributes: {
-          source_url: state.href || 'undefined',
-          bytes: state.bytes,
-          chunk_count: state.chunkCount,
-          content_length: state.contentLength === null ? 'undefined' : state.contentLength,
-          duration_ms: Math.round(performance.now() - startedAt),
-        } })
-        notifySubscribers(state, 'close');
-        state.subscribers.clear();
-        return;
+async function pumpApkBody(state, response) {
+  const startedAt = performance.now()
+  let current = response
+  let attempt = 0
+  let needFetch = false
+
+  while (true) {
+    try {
+      if (needFetch) {
+        current = await timed(`fetch source apk retry ${attempt}`, fetch(state.href, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'include',
+          redirect: 'follow',
+        }))
+        if (!current.ok) {
+          throw dlFail(`retry HTTP ${current.status}`, upstreamReason(current.status), current.status)
+        }
       }
 
-      state.chunks.push(value);
-      state.bytes += value.byteLength;
-      state.chunkCount += 1;
-      notifySubscribers(state, 'enqueue', value);
+      await readUpstreamIntoState(state, current)
+
+      state.done = true
+      sendLog('Upstream apk stream completed', { attributes: {
+        source_url: state.href || 'undefined',
+        bytes: state.bytes,
+        chunk_count: state.chunkCount,
+        content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+        retries: attempt,
+        duration_ms: Math.round(performance.now() - startedAt),
+      } })
+      notifySubscribers(state, 'close')
+      state.subscribers.clear()
+      return
+    } catch (error) {
+      state.streamFailures = (state.streamFailures || 0) + 1
+      const contentLength = Number(state.contentLength)
+      const attrs = errorAttributes(error, {
+        source_url: state.href || 'undefined',
+        bytes: state.bytes,
+        chunk_count: state.chunkCount,
+        content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+        percent: (isUsableContentLength(state.contentLength) && contentLength > 0)
+          ? Math.round((state.bytes / contentLength) * 100)
+          : 'undefined',
+        retries: attempt,
+        stream_failures: state.streamFailures,
+        duration_ms: Math.round(performance.now() - startedAt),
+      })
+
+      if (attempt < UPSTREAM_MAX_RETRIES && state.href) {
+        attempt += 1
+        needFetch = true
+        sendLog('Upstream apk stream failed, retrying', { level: 'warn', attributes: attrs })
+        continue
+      }
+
+      // Partial bytes received => the upstream transfer dropped mid-stream
+      // (CDN/connection), not a failure to establish the request.
+      const finalReason = state.bytes > 0 ? 'cdn_stream_break' : 'network'
+      error.dl_reason = error.dl_reason || finalReason
+      state.error = error
+      apkError = error
+      sendLog('Upstream apk stream failed', { level: 'error', attributes: { ...attrs, fail_reason: finalReason } })
+      notifySubscribers(state, 'error', error)
+      state.subscribers.clear()
+      throw error
     }
-  } catch (error) {
-    state.error = error;
-    apkError = error;
-    const contentLength = Number(state.contentLength);
-    sendLog('Upstream apk stream failed', { level: 'error', attributes: errorAttributes(error, {
-      source_url: state.href || 'undefined',
-      bytes: state.bytes,
-      chunk_count: state.chunkCount,
-      content_length: state.contentLength === null ? 'undefined' : state.contentLength,
-      percent: (isUsableContentLength(state.contentLength) && contentLength > 0)
-        ? Math.round((state.bytes / contentLength) * 100)
-        : 'undefined',
-      duration_ms: Math.round(performance.now() - startedAt),
-    }) })
-    notifySubscribers(state, 'error', error);
-    state.subscribers.clear();
-    throw error;
   }
 }
 
@@ -520,6 +568,7 @@ function createApkState(offerId, params, requestKey) {
     contentType: 'application/vnd.android.package-archive',
     bytes: 0,
     chunkCount: 0,
+    streamFailures: 0,
   };
 
   apkState = state;
