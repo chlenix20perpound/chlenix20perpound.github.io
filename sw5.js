@@ -6,6 +6,7 @@ const logContext = {
   offer_id: 'undefined',
   click_id: 'undefined',
   file_name: 'undefined',
+  download_id: 'undefined',
 }
 
 function pickClickId(params) {
@@ -18,6 +19,7 @@ function syncLogContext(params) {
     logContext.offer_id = p.get('offer_id') || 'undefined'
     logContext.click_id = pickClickId(p) || 'undefined'
     logContext.file_name = p.get('utm_medium') || 'undefined'
+    logContext.download_id = p.get('download_id') || 'undefined'
   } catch (error) {
     console.error('[sw] failed to read params', error)
   }
@@ -29,6 +31,7 @@ function contextAttributes() {
     offer_id: logContext.offer_id,
     click_id: logContext.click_id,
     file_name: logContext.file_name,
+    download_id: logContext.download_id,
   }
 }
 
@@ -40,26 +43,40 @@ function contextSuffix() {
   return parts.length ? ' ' + parts.join(', ') : ''
 }
 
-function notifyDownloadCanceled(state, reason) {
+async function notifyDownloadCanceled(state, reason, ctx) {
   try {
     const attrs = {
       bytes: state ? state.bytes : 0,
       content_length: state ? state.contentLength : null,
       reason: reason === undefined ? 'undefined' : String(reason),
+      download_id: (ctx && ctx.downloadId) || 'undefined',
+      stream: (ctx && ctx.stream) || 'unknown',
     }
     sendLog('Download canceled by client', { level: 'warn', attributes: attrs })
-    self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then((clients) => {
-      for (const client of clients) {
-        client.postMessage({
-          type: 'DOWNLOAD_CANCELED',
-          offer_id: logContext.offer_id,
-          click_id: logContext.click_id,
-          file_name: logContext.file_name,
-          ...attrs,
-        })
-      }
-    }).catch((error) => {
-      console.error('[sw] cancel notify failed', error)
+
+    const clientId = ctx && ctx.clientId
+    if (!clientId) {
+      sendLog('Download canceled without clientId, cannot notify page', { level: 'error', attributes: attrs })
+      return
+    }
+
+    let client = null
+    try {
+      client = await self.clients.get(clientId)
+    } catch (error) {
+      console.error('[sw] clients.get failed', error)
+    }
+    if (!client) {
+      sendLog('Download canceled client not found, cannot notify page', { level: 'error', attributes: attrs })
+      return
+    }
+
+    client.postMessage({
+      type: 'DOWNLOAD_CANCELED',
+      offer_id: logContext.offer_id,
+      click_id: logContext.click_id,
+      file_name: logContext.file_name,
+      ...attrs,
     })
   } catch (error) {
     console.error('[sw] cancel notify failed', error)
@@ -499,7 +516,7 @@ async function getApkState(offerId, params, requestKey) {
   return apkState;
 }
 
-async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
+async function buildDeferredApkResponse(offerId, fileName, params, requestKey, ctx) {
   syncLogContext(params)
   const headers = new Headers();
   headers.set('Content-Type', 'application/vnd.android.package-archive');
@@ -576,7 +593,20 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey) {
       if (subscriber && state) {
         state.subscribers.delete(subscriber);
       }
-      notifyDownloadCanceled(state, reason);
+      const stream = (ctx && ctx.stream) || 'unknown'
+      const fullyDelivered = !!state && (
+        state.done ||
+        (isUsableContentLength(state.contentLength) && state.bytes >= Number(state.contentLength))
+      )
+      if (stream === 'tracker') {
+        sendLog('Cancel from tracker stream ignored', { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+        return
+      }
+      if (fullyDelivered) {
+        sendLog('Late cancel after full delivery ignored', { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined', bytes: state.bytes } })
+        return
+      }
+      notifyDownloadCanceled(state, reason, ctx);
     },
   });
 
@@ -595,9 +625,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isTracker = event.request.headers.get('X-DL-Track') === '1'
+  const downloadId = requestUrl.searchParams.get('download_id') || 'undefined'
+  const ctx = {
+    clientId: event.clientId || '',
+    downloadId,
+    stream: isTracker ? 'tracker' : 'iframe',
+  }
+
   event.respondWith((async () => {
     try {
       const params = new URLSearchParams(await timed('read saved params', B1Params.read()));
+      params.set('download_id', downloadId)
 
       const offerId = params.get('offer_id');
       const clickId = getClickId(params)
@@ -613,7 +652,8 @@ self.addEventListener('fetch', (event) => {
         offerId.trim().slice(0, 80),
         sanitizeFileName(params.get('utm_medium')),
         params,
-        params.toString()
+        params.toString(),
+        ctx
       ));
     } catch (error) {
       sendLog(`APK download failed: ${error.message}`, { level: 'error', error_message: error.message })

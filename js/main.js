@@ -38,6 +38,17 @@
     let downloadTracked = false;
     let downloadCanceled = false;
     let downloadFailed = false;
+    let downloadId = 'undefined';
+    let downloadCompleted = false;
+
+    function makeDownloadId() {
+        try {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        } catch (error) {
+            // ignore, fall back below
+        }
+        return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
 
     // --- utils -----------------------------------------------------------------
 
@@ -81,6 +92,7 @@
             offer_id: logContext.offer_id,
             click_id: logContext.click_id,
             file_name: logContext.file_name,
+            download_id: downloadId,
         };
     }
 
@@ -357,9 +369,16 @@
         downloadTracked = false;
         downloadCanceled = false;
         downloadFailed = false;
+        downloadCompleted = false;
     }
 
-    async function trackDownload(targetHref) {
+    function markDownloadAttempt() {
+        resetDownload();
+        downloadId = makeDownloadId();
+        return downloadId;
+    }
+
+    async function trackDownload(targetHref, attemptId) {
         if (downloadTracked) {
             log('info', 'Download tracking skipped (already tracked)');
             return;
@@ -368,6 +387,8 @@
         downloadTracked = true;
         const startedAt = performance.now();
 
+        const isCurrentAttempt = () => attemptId === undefined || attemptId === downloadId;
+
         try {
             const response = await timedStep('download completion', fetch(targetHref, {
                 method: 'GET',
@@ -375,13 +396,19 @@
                 credentials: 'omit',
                 redirect: 'follow',
                 cache: 'no-store',
+                headers: { 'X-DL-Track': '1' },
             }));
+
+            if (!isCurrentAttempt()) {
+                log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
+                return;
+            }
 
             if (!response.ok) {
                 downloadFailed = true;
                 log('error', 'Download completion fetch failed', { status_code: response.status });
                 if (!downloadCanceled) {
-                    capture('DownloadFailed', { status_code: response.status, duration_ms: Math.round(performance.now() - startedAt) });
+                    capture('DownloadFailed', { status_code: response.status, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
                 }
                 return;
             }
@@ -396,12 +423,18 @@
                 bytes += value.byteLength;
             }
 
+            if (!isCurrentAttempt()) {
+                log('info', 'Download completion skipped (stale attempt)', { attempt_download_id: attemptId });
+                return;
+            }
+
             if (downloadFailed || downloadCanceled) {
                 log('info', 'Download completion skipped (already failed/canceled)');
                 return;
             }
 
-            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt) });
+            downloadCompleted = true;
+            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
         } catch (error) {
             downloadFailed = true;
 
@@ -411,13 +444,20 @@
                 error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
             });
 
-            if (!downloadCanceled) {
+            // Give a pending DOWNLOAD_CANCELED message a moment to arrive so we do
+            // not emit DownloadFailed for what the user actually canceled.
+            window.setTimeout(() => {
+                if (downloadCanceled || downloadCompleted || !isCurrentAttempt()) {
+                    log('info', 'DownloadFailed skipped (canceled/completed/newer attempt)');
+                    return;
+                }
                 capture('DownloadFailed', {
                     error_name: error?.name,
                     error_message: error?.message,
                     duration_ms: Math.round(performance.now() - startedAt),
+                    download_id: attemptId,
                 });
-            }
+            }, 250);
         }
     }
 
@@ -428,20 +468,22 @@
                 return;
             }
 
+            const attemptId = options.keepAttempt ? downloadId : markDownloadAttempt();
+
             const target = new URL('download.apk', window.__landingRoot);
             if (options.passParams) {
                 for (const [key, value] of savedParams) {
                     target.searchParams.set(key, value);
                 }
             }
+            target.searchParams.set('download_id', attemptId);
             log('info', 'Starting service worker download', { target: target.href });
 
             const frame = document.querySelector('#downloadFrame');
             frame.src = 'about:blank';
-            resetDownload();
             window.setTimeout(() => {frame.src = target.href;}, 0);
 
-            trackDownload(target.href).catch((error) => {
+            trackDownload(target.href, attemptId).catch((error) => {
                 log('error', 'Download tracking setup failed', { error_message: error && error.message });
             });
         } catch (error) {
@@ -455,8 +497,9 @@
 
     function autoDownload(options = {}) {
         try {
+            markDownloadAttempt();
             capture('Auto download');
-            startDownload(options);
+            startDownload({ ...options, keepAttempt: true });
         } catch (error) {
             log('error', 'Auto download failed', {
                 error_name: error?.name,
@@ -468,6 +511,15 @@
 
     function onCanceled(data) {
         try {
+            if (data && data.download_id && data.download_id !== downloadId) {
+                log('info', 'DownloadCanceled ignored (stale download_id)', { event_download_id: data.download_id });
+                return;
+            }
+            if (downloadCompleted) {
+                log('info', 'DownloadCanceled ignored (already completed)');
+                return;
+            }
+
             downloadCanceled = true;
 
             capture('DownloadCanceled', {
