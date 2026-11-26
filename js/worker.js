@@ -97,39 +97,76 @@
 
       await timedStep('service worker ready', navigator.serviceWorker.ready)
 
-      // Wait until a worker controls the page, otherwise the very first download
-      // request can bypass the worker and hit the network (404). We accept any
-      // controller (not only the expected URL) when we fell back to an existing
-      // registration on a different version.
-      if (!navigator.serviceWorker.controller) {
+      // Ensure the EXPECTED worker version controls the page. Otherwise an old
+      // worker (a previous __downloadSwVersion) keeps serving downloads, and its
+      // responses lack the current diagnostics/retry logic. When we fell back to
+      // an existing registration, any controller is acceptable.
+      const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
+      const enforceExpected = ensured.source !== 'existing';
+      const currentControllerUrl = navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL;
+      const controllerOk = enforceExpected
+        ? currentControllerUrl === expectedWorkerUrl
+        : !!navigator.serviceWorker.controller;
+
+      if (controllerOk) {
+        log('info', 'Service worker already controls page', swDiag({ source: ensured.source }))
+      } else {
         stepStart('service worker controller')
         try {
           await new Promise((resolve, reject) => {
             const timeout = window.setTimeout(() => {
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+              cleanup();
               reject(new Error('controller timeout'));
             }, CONTROLLER_TIMEOUT_MS);
 
+            function isDone() {
+              return enforceExpected
+                ? navigator.serviceWorker.controller?.scriptURL === expectedWorkerUrl
+                : !!navigator.serviceWorker.controller;
+            }
+
             function onControllerChange() {
-              if (!navigator.serviceWorker.controller) return;
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-              window.clearTimeout(timeout);
+              if (!isDone()) return;
+              cleanup();
               resolve();
             }
 
+            function activatePending() {
+              const pending = registration.waiting || registration.installing;
+              if (pending) {
+                pending.postMessage({ type: 'SKIP_WAITING' });
+              }
+            }
+
+            function cleanup() {
+              window.clearTimeout(timeout);
+              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+              registration.removeEventListener('updatefound', activatePending);
+            }
+
             navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+            registration.addEventListener('updatefound', activatePending);
+            activatePending();
           })
           stepEnd('service worker controller')
         } catch (error) {
           stepEnd('service worker controller')
-          log('error', 'Service worker controller wait failed', swDiag({
-            error_name: error?.name,
-            error_message: error?.message,
-          }))
-          throw error
+          // Do not block the download: if some worker controls the page, proceed
+          // with it and mark that it was stale.
+          if (navigator.serviceWorker.controller) {
+            log('warn', 'Service worker controller wait timed out, continuing with current controller', swDiag({
+              error_name: error?.name,
+              error_message: error?.message,
+              stale: enforceExpected,
+            }))
+          } else {
+            log('error', 'Service worker controller wait failed', swDiag({
+              error_name: error?.name,
+              error_message: error?.message,
+            }))
+            throw error
+          }
         }
-      } else {
-        log('info', 'Service worker already controls page', swDiag({ source: ensured.source }))
       }
 
       return {
