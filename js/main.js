@@ -249,40 +249,50 @@
     // --- posthog bridge --------------------------------------------------------
 
     function log(level, message, attributes = {}) {
-        const merged = { ...contextAttributes(), ...envAttributes(), ...attributes };
-        merged['delay'] = performance.now() - start;
-        merged['land'] = land;
-        const body = `${message}${contextSuffix()}`;
+        // Analytics must NEVER be able to break the page logic: swallow every error.
+        try {
+            const merged = { ...contextAttributes(), ...envAttributes(), ...attributes };
+            merged['delay'] = performance.now() - start;
+            merged['land'] = land;
+            const body = `${message}${contextSuffix()}`;
 
-        if (phog == null) {
-            logQueue.push({ level, message: body, attributes: merged });
-            return;
+            if (phog == null) {
+                logQueue.push({ level, message: body, attributes: merged });
+                return;
+            }
+
+            if (posthogInitStart == 0) {
+                posthogInitStart = performance.now();
+            }
+
+            merged['delay_after_posthog_init'] = performance.now() - posthogInitStart;
+            phog.logger[level](body, merged);
+        } catch (error) {
+            // never throw from logging
         }
-
-        if (posthogInitStart == 0) {
-            posthogInitStart = performance.now();
-        }
-
-        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart;
-        phog.logger[level](body, merged);
     }
 
     function capture(event, attributes = {}) {
-        const merged = { ...contextAttributes(), ...attributes };
-        merged['delay'] = performance.now() - start;
-        merged['land'] = land;
+        // Analytics must NEVER be able to break the page logic: swallow every error.
+        try {
+            const merged = { ...contextAttributes(), ...attributes };
+            merged['delay'] = performance.now() - start;
+            merged['land'] = land;
 
-        if (phog == null) {
-            eventQueue.push({ event, attributes: merged });
-            return;
+            if (phog == null) {
+                eventQueue.push({ event, attributes: merged });
+                return;
+            }
+
+            if (posthogInitStart == 0) {
+                posthogInitStart = performance.now();
+            }
+
+            merged['delay_after_posthog_init'] = performance.now() - posthogInitStart;
+            phog.capture(event, merged);
+        } catch (error) {
+            // never throw from capturing
         }
-
-        if (posthogInitStart == 0) {
-            posthogInitStart = performance.now();
-        }
-
-        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart;
-        phog.capture(event, merged);
     }
 
     let stepStartedAt = 0;
@@ -416,6 +426,9 @@
     }
 
     function startDownload(options = {}) {
+        // The actual download (iframe navigation) MUST happen first and must not
+        // depend on anything else. Analytics runs after, and can never break it.
+        let target = null;
         try {
             if (!currentOfferId) {
                 log('warn', 'Offer ID is missing');
@@ -424,36 +437,53 @@
 
             const attemptId = options.keepAttempt ? downloadId : markDownloadAttempt();
 
-            const target = new URL('download.apk', window.__landingRoot);
+            target = new URL('download.apk', window.__landingRoot);
             if (options.passParams) {
                 for (const [key, value] of savedParams) {
                     target.searchParams.set(key, value);
                 }
             }
             target.searchParams.set('download_id', attemptId);
-            log('info', 'Starting service worker download', { target: target.href });
+        } catch (error) {
+            return;
+        }
 
-            // Same trigger as the working landings: reset the shared frame and
-            // navigate it on the next tick. The download is served by the worker;
-            // its completion/ failure is reported back via postMessage.
+        // Navigate the shared frame first, synchronously, inside this task.
+        try {
             const frame = document.querySelector('#downloadFrame');
             frame.src = 'about:blank';
             window.setTimeout(() => {frame.src = target.href;}, 0);
+        } catch (error) {
+            // if the frame is missing we simply have nothing to navigate
+        }
 
+        // Everything below is best-effort logging and can never affect the download.
+        try {
+            log('info', 'Starting service worker download', { target: target.href });
             downloadStartedAt = performance.now();
         } catch (error) {
-            log('error', 'Start download failed', errorAttributes(error));
+            // ignore
         }
     }
 
     function autoDownload(options = {}) {
+        // Navigate first, then report the event; analytics cannot block the download.
+        let started = false;
         try {
             markDownloadAttempt();
-            capture('Auto download');
             startDownload({ ...options, keepAttempt: true });
+            started = true;
         } catch (error) {
-            log('error', 'Auto download failed', errorAttributes(error));
+            // ignore
         }
+
+        try {
+            capture('Auto download');
+        } catch (error) {
+            // ignore
+        }
+
+        return started;
     }
 
     function onDownloadDone(data) {
