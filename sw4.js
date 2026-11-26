@@ -174,7 +174,7 @@ const startedAt = performance.now();
   const request = fetch(ANALYT_LOGS_ENDPOINT, {
     method: 'POST',
     mode: 'cors',
-    credentials: 'omit',
+    credentials: 'include',
     headers: {
       'Content-Type': 'text/plain;charset=UTF-8',
     },
@@ -399,7 +399,7 @@ async function resolveOfferUrl(offerId, params) {
   const response = await timed('fetch offer endpoint', fetch(endpoint.href, {
     method: 'GET',
     mode: 'cors',
-    credentials: 'omit',
+    credentials: 'include',
     redirect: 'follow',
     headers: {
       'Accept': 'application/json',
@@ -460,7 +460,7 @@ function createApkState(offerId, params, requestKey) {
     const response = await timed('fetch source apk', fetch(sourceUrl.href, {
       method: 'GET',
       mode: 'cors',
-      credentials: 'omit',
+      credentials: 'include',
       redirect: 'follow',
     }))
 

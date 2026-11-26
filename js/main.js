@@ -393,7 +393,7 @@
             const response = await timedStep('download completion', fetch(targetHref, {
                 method: 'GET',
                 mode: 'cors',
-                credentials: 'omit',
+                credentials: 'include',
                 redirect: 'follow',
                 cache: 'no-store',
                 headers: { 'X-DL-Track': '1' },
