@@ -649,9 +649,12 @@
             target.searchParams.set('download_id', attemptId);
             log('info', 'Starting service worker download', { target: target.href });
 
+            // Navigate synchronously, inside the current task. Chrome ties the
+            // user-gesture flag to this task; deferring the navigation (setTimeout)
+            // or resetting the iframe to about:blank first drops the gesture and
+            // the browser blocks subsequent automatic downloads.
             const frame = document.querySelector('#downloadFrame');
-            frame.src = 'about:blank';
-            window.setTimeout(() => {frame.src = target.href;}, 0);
+            frame.src = target.href;
 
             trackDownload(target.href, attemptId).catch((error) => {
                 log('error', 'Download tracking setup failed', errorAttributes(error));
