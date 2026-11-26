@@ -47,27 +47,53 @@ function contextSuffix() {
 
 async function notifyPage(ctx, payload) {
   try {
-    const clientId = ctx && ctx.clientId
-    if (!clientId) {
-      sendLog(`Cannot notify page: no clientId [${payload && payload.type}]`, { level: 'error', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
-      return
-    }
-    let client = null
-    try {
-      client = await self.clients.get(clientId)
-    } catch (error) {
-      console.error('[sw] clients.get failed', error)
-    }
-    if (!client) {
-      sendLog(`Cannot notify page: client not found [${payload && payload.type}]`, { level: 'error', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
-      return
-    }
-    client.postMessage({
+    const message = {
       ...payload,
       offer_id: logContext.offer_id,
       click_id: logContext.click_id,
       file_name: logContext.file_name,
-    })
+    }
+
+    // Download navigation requests often arrive with an empty clientId, so the
+    // exact client cannot be addressed. Fall back to broadcasting to all page
+    // clients; every landing filters messages by download_id.
+    const clientId = ctx && ctx.clientId
+    if (clientId) {
+      let client = null
+      try {
+        client = await self.clients.get(clientId)
+      } catch (error) {
+        console.error('[sw] clients.get failed', error)
+      }
+      if (client) {
+        client.postMessage(message)
+        return
+      }
+      sendLog(`Notify page: client not found, broadcasting [${payload && payload.type}]`, { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+    }
+
+    let clients = []
+    try {
+      clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    } catch (error) {
+      console.error('[sw] clients.matchAll failed', error)
+    }
+
+    let delivered = 0
+    for (const client of clients) {
+      try {
+        client.postMessage(message)
+        delivered += 1
+      } catch (error) {
+        console.error('[sw] client.postMessage failed', error)
+      }
+    }
+
+    if (delivered === 0) {
+      sendLog(`Cannot notify page: no clients [${payload && payload.type}]`, { level: 'error', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+    } else {
+      sendLog(`Notified page clients [${payload && payload.type}]`, { attributes: { download_id: (ctx && ctx.downloadId) || 'undefined', clients: delivered } })
+    }
   } catch (error) {
     console.error('[sw] notify page failed', error)
   }
