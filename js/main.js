@@ -35,7 +35,6 @@
         platform_version: 'undefined',
     };
 
-    let downloadTracked = false;
     let downloadCanceled = false;
     let downloadFailed = false;
     let downloadId = 'undefined';
@@ -379,7 +378,6 @@
     // --- download flow ---------------------------------------------------------
 
     function resetDownload() {
-        downloadTracked = false;
         downloadCanceled = false;
         downloadFailed = false;
         downloadCompleted = false;
@@ -417,220 +415,6 @@
         }
     }
 
-    // Classify a failed download: where it broke and who is at fault.
-    //   upstream_5xx / upstream_4xx - response came from the worker with an error status
-    //   network                     - fetch/stream broke without a status (connection dropped)
-    //   tracking_miss               - response did not come from our worker
-    //   unknown                     - none of the above
-    function failureReason(info = {}) {
-        // The worker tells us the real reason via X-DL-Fail; prefer it over the
-        // synthetic 502 status it uses for its own failures.
-        const workerFail = info.worker_fail;
-        if (workerFail && workerFail !== 'undefined') return workerFail;
-
-        const served = info.served_header;
-        const attemptId = info.attempt_id;
-        const fromWorker = served !== undefined && served !== 'undefined' && served === attemptId;
-        const status = typeof info.status_code === 'number' ? info.status_code : Number(info.status_code);
-        const hasStatus = Number.isFinite(status) && status > 0;
-
-        if (fromWorker && hasStatus && status >= 500) return 'upstream_5xx';
-        if (fromWorker && hasStatus && status >= 400) return 'upstream_4xx';
-        if (!fromWorker && hasStatus) return 'tracking_miss';
-        if (!hasStatus) return 'network';
-        return 'unknown';
-    }
-
-    function failureReasonAttributes(info) {
-        let reason = failureReason(info);
-        const quality = networkQuality();
-        const out = {};
-
-        if (reason === 'network') {
-            const bytes = Number(info.bytes_read);
-            const hadBytes = Number.isFinite(bytes) && bytes > 0;
-            if (quality === 'poor') {
-                // User's connection is the likely cause.
-                reason = 'user_network';
-            } else if (hadBytes) {
-                // The transfer started and then dropped on a healthy connection:
-                // the upstream CDN stream broke.
-                reason = 'cdn_stream_break';
-            }
-        }
-
-        out.reason = reason;
-        if (reason === 'network' || reason === 'user_network' || reason === 'cdn_stream_break') {
-            out.network_quality = quality;
-        }
-        return out;
-    }
-
-    function downloadDiag(attempt, targetHref) {
-        const response = attempt && attempt.response;
-        return {
-            status_code: response ? response.status : 'undefined',
-            status_text: response ? (response.statusText || 'undefined') : 'undefined',
-            response_url: response ? (response.url || 'undefined') : 'undefined',
-            response_type: response ? (response.type || 'undefined') : 'undefined',
-            response_redirected: response ? String(response.redirected) : 'undefined',
-            served_header: (attempt && attempt.served) || 'undefined',
-            worker_fail: (attempt && attempt.fail) || 'undefined',
-            upstream_status_code: (attempt && attempt.failStatus) || 'undefined',
-            request_url: targetHref,
-            sw_controlled: !!navigator.serviceWorker.controller,
-            sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
-        };
-    }
-
-    async function fetchTracked(targetHref, label) {
-        const response = await timedStep(label, fetch(targetHref, {
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'omit',
-            redirect: 'follow',
-            cache: 'no-store',
-            headers: { 'X-DL-Track': '1' },
-        }));
-        let served = 'undefined';
-        let fail = 'undefined';
-        let failStatus = 'undefined';
-        try {
-            served = response.headers.get('X-DL-Served') || 'undefined';
-            fail = response.headers.get('X-DL-Fail') || 'undefined';
-            failStatus = response.headers.get('X-DL-Fail-Status') || 'undefined';
-        } catch (error) {
-            served = 'unreadable';
-        }
-        return { response, served, fail, failStatus };
-    }
-
-    async function trackDownload(targetHref, attemptId) {
-        if (downloadTracked) {
-            log('info', 'Download tracking skipped (already tracked)');
-            return;
-        }
-
-        downloadTracked = true;
-        const startedAt = performance.now();
-        let bytesRead = 0;
-        let contentLength = null;
-
-        const isCurrentAttempt = () => attemptId === undefined || attemptId === downloadId;
-
-        let attempt = null;
-
-        try {
-            attempt = await fetchTracked(targetHref, 'download completion');
-
-            if (!isCurrentAttempt()) {
-                log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
-                return;
-            }
-
-            // If the worker did not serve the response, the request bypassed it
-            // (race on first load). Retry once after the worker takes control.
-            if (attempt.served !== attemptId) {
-                log('warn', 'Download not served by service worker, retrying', downloadDiag(attempt, targetHref));
-                await new Promise((resolve) => window.setTimeout(resolve, 400));
-
-                if (!isCurrentAttempt()) {
-                    log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
-                    return;
-                }
-
-                attempt = await fetchTracked(targetHref, 'download completion retry');
-
-                if (!isCurrentAttempt()) {
-                    log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
-                    return;
-                }
-            }
-
-            // Still not served by the worker: treat as tracking miss, not a failure.
-            if (attempt.served !== attemptId) {
-                const details = downloadDiag(attempt, targetHref);
-                log('warn', 'Download tracking miss (response not from service worker)', details);
-                capture('DownloadTrackingMiss', { ...details, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
-                return;
-            }
-
-            const response = attempt.response;
-
-            const rawLength = Number(response.headers.get('Content-Length'));
-            contentLength = (response.headers.get('Content-Length') !== null && Number.isSafeInteger(rawLength) && rawLength > 0)
-                ? rawLength
-                : null;
-
-            if (!response.ok) {
-                downloadFailed = true;
-                const details = downloadDiag(attempt, targetHref);
-                const reasonAttrs = failureReasonAttributes({ ...details, attempt_id: attemptId });
-                log('error', 'Download completion fetch failed', { ...details, ...reasonAttrs });
-                if (!downloadCanceled) {
-                    capture('DownloadFailed', { ...details, ...reasonAttrs, duration_ms: Math.round(performance.now() - startedAt), download_delay: downloadDelay(), download_id: attemptId });
-                }
-                return;
-            }
-
-            const reader = response.body.getReader();
-            let bytes = 0;
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    break;
-                }
-                bytes += value.byteLength;
-                bytesRead = bytes;
-            }
-
-            if (!isCurrentAttempt()) {
-                log('info', 'Download completion skipped (stale attempt)', { attempt_download_id: attemptId });
-                return;
-            }
-
-            if (downloadFailed || downloadCanceled) {
-                log('info', 'Download completion skipped (already failed/canceled)');
-                return;
-            }
-
-            downloadCompleted = true;
-            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt), download_delay: downloadDelay(), download_id: attemptId });
-        } catch (error) {
-            downloadFailed = true;
-
-            const diag = {
-                request_url: targetHref,
-                bytes_read: bytesRead,
-                content_length: contentLength === null ? 'undefined' : contentLength,
-                percent: (typeof contentLength === 'number' && contentLength > 0)
-                    ? Math.round((bytesRead / contentLength) * 100)
-                    : 'undefined',
-                served_header: (attempt && attempt.served) || 'undefined',
-                sw_controlled: !!navigator.serviceWorker.controller,
-                sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
-            };
-            const reasonAttrs = failureReasonAttributes({ ...diag, attempt_id: attemptId });
-            log('error', 'Download tracking failed', errorAttributes(error, { ...diag, ...reasonAttrs }));
-
-            // Give a pending DOWNLOAD_CANCELED message a moment to arrive so we do
-            // not emit DownloadFailed for what the user actually canceled.
-            window.setTimeout(() => {
-                if (downloadCanceled || downloadCompleted || !isCurrentAttempt()) {
-                    log('info', 'DownloadFailed skipped (canceled/completed/newer attempt)');
-                    return;
-                }
-                capture('DownloadFailed', errorAttributes(error, {
-                    ...diag,
-                    ...reasonAttrs,
-                    duration_ms: Math.round(performance.now() - startedAt),
-                    download_delay: downloadDelay(),
-                    download_id: attemptId,
-                }));
-            }, 250);
-        }
-    }
-
     function startDownload(options = {}) {
         try {
             if (!currentOfferId) {
@@ -649,33 +433,14 @@
             target.searchParams.set('download_id', attemptId);
             log('info', 'Starting service worker download', { target: target.href });
 
-            // Create a FRESH iframe for every download: a reused iframe only starts
-            // one download, later navigations to an attachment are ignored. Set src
-            // and append synchronously, still inside the user-gesture task. Old
-            // frames are cleaned up later (not now) so an in-flight download in
-            // them is never aborted.
-            const frame = document.createElement('iframe');
-            frame.className = 'hidden-frame dl-frame';
-            frame.title = 'download frame';
-            frame.setAttribute('aria-hidden', 'true');
-            frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;';
-            document.body.appendChild(frame);
-            frame.src = target.href;
+            // Same trigger as the working landings: reset the shared frame and
+            // navigate it on the next tick. The download is served by the worker;
+            // its completion/ failure is reported back via postMessage.
+            const frame = document.querySelector('#downloadFrame');
+            frame.src = 'about:blank';
+            window.setTimeout(() => {frame.src = target.href;}, 0);
 
-            // Keep the DOM bounded: drop all but the current and the previous frame
-            // (the previous one may still be serving an in-flight download).
-            try {
-                const frames = document.querySelectorAll('.dl-frame');
-                for (let i = 0; i < frames.length - 2; i += 1) {
-                    frames[i].remove();
-                }
-            } catch (error) {
-                // cleanup is best-effort
-            }
-
-            trackDownload(target.href, attemptId).catch((error) => {
-                log('error', 'Download tracking setup failed', errorAttributes(error));
-            });
+            downloadStartedAt = performance.now();
         } catch (error) {
             log('error', 'Start download failed', errorAttributes(error));
         }
@@ -688,6 +453,84 @@
             startDownload({ ...options, keepAttempt: true });
         } catch (error) {
             log('error', 'Auto download failed', errorAttributes(error));
+        }
+    }
+
+    function onDownloadDone(data) {
+        try {
+            if (data && data.download_id && data.download_id !== downloadId) {
+                log('info', 'Downloaded ignored (stale download_id)', { event_download_id: data.download_id });
+                return;
+            }
+            if (downloadCompleted || downloadCanceled) {
+                log('info', 'Downloaded ignored (already finished)');
+                return;
+            }
+
+            downloadCompleted = true;
+            capture('Downloaded', {
+                bytes: data && data.bytes,
+                content_length: data && data.content_length,
+                retries: data && data.retries,
+                duration_ms: downloadDelay(),
+                download_delay: downloadDelay(),
+            });
+        } catch (error) {
+            log('error', 'Downloaded handler failed', errorAttributes(error));
+        }
+    }
+
+    function onDownloadFailed(data) {
+        try {
+            if (data && data.download_id && data.download_id !== downloadId) {
+                log('info', 'DownloadFailed ignored (stale download_id)', { event_download_id: data.download_id });
+                return;
+            }
+            if (downloadCompleted) {
+                log('info', 'DownloadFailed ignored (already completed)');
+                return;
+            }
+
+            let reason = (data && data.reason) || 'network';
+            const quality = networkQuality();
+            const bytes = Number(data && data.bytes);
+            const hadBytes = Number.isFinite(bytes) && bytes > 0;
+
+            if (reason === 'network') {
+                if (quality === 'poor') {
+                    reason = 'user_network';
+                } else if (hadBytes) {
+                    reason = 'cdn_stream_break';
+                }
+            }
+
+            downloadFailed = true;
+
+            const details = {
+                reason,
+                worker_reason: (data && data.reason) || 'undefined',
+                upstream_status_code: (data && data.upstream_status_code) || 'undefined',
+                bytes: data && data.bytes,
+                chunk_count: data && data.chunk_count,
+                content_length: data && data.content_length,
+                percent: data && data.percent,
+                retries: data && data.retries,
+                stream_failures: data && data.stream_failures,
+                error_name: (data && data.error_name) || 'undefined',
+                error_message: (data && data.error_message) || 'undefined',
+            };
+            if (reason === 'network' || reason === 'user_network' || reason === 'cdn_stream_break') {
+                details.network_quality = quality;
+            }
+
+            log('error', 'Download failed', details);
+            capture('DownloadFailed', {
+                ...details,
+                duration_ms: downloadDelay(),
+                download_delay: downloadDelay(),
+            });
+        } catch (error) {
+            log('error', 'DownloadFailed handler failed', errorAttributes(error));
         }
     }
 
@@ -747,9 +590,10 @@
         redirectUrl,
         startDownload,
         autoDownload,
-        trackDownload,
         resetDownload,
         onCanceled,
+        onDownloadDone,
+        onDownloadFailed,
         onTrustedClick,
         contextAttributes,
         envAttributes,
