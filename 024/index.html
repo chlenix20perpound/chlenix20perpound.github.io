@@ -6,324 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Download</title>
     <script src="../params.js?v=personal-site-24"></script>
+    <script src="../js/main.js"></script>
+    <script src="../js/worker.js"></script>
     <script>
-      const start = performance.now()
-
-      !function(t,e){var o,n,p,r;e.__SV||(window.posthog && window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}p||((p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",p.onerror=function(){p=null},(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r));var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="Eh Rh Ph Oh Dh qh init yd bd dd fd Sd wc md xd ad Ed Ad Rd Pd Od Fd capture getExtension gr pd gd calculateEventProperties Dd register register_once register_for_session unregister unregister_for_session zd hd jd getFeatureFlag getFeatureFlagPayload getFeatureFlagResult getAllFeatureFlags isFeatureEnabled reloadFeatureFlags updateFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys onActiveMatchingSurveysChanged renderSurvey displaySurvey cancelPendingSurvey canRenderSurvey canRenderSurveyAsync Hd identify setPersonProperties unsetPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset Ud shutdown setIdentity clearIdentity get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException addExceptionStep captureLog startExceptionAutocapture stopExceptionAutocapture loadToolbar get_property getSessionProperty qd Td createPersonProfile setInternalOrTestUser Bd Uh zh opt_in_capturing opt_out_capturing Hh has_opted_in_capturing has_opted_out_capturing get_explicit_consent_status is_capturing clear_opt_in_out_capturing $d debug kc Ds getPageViewId captureTraceFeedback captureTraceMetric rd".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-      const logQueue = []
-      const eventQueue = []
-      let phog = null
-      let posthogInitStart = 0
-
-      const logContext = {
-        offer_id: 'undefined',
-        click_id: 'undefined',
-        file_name: 'undefined',
-      }
-
-      function pickClickId(params) {
-        return params.get('click_id') || params.get('utm_id') || params.get('clickid') || params.get('clickId') || ''
-      }
-
-      function syncLogContext(params) {
-        try {
-          const p = params || window.__savedDownloadParams || new URLSearchParams(window.location.search)
-          logContext.offer_id = p.get('offer_id') || 'undefined'
-          logContext.click_id = pickClickId(p) || 'undefined'
-          logContext.file_name = p.get('utm_medium') || 'undefined'
-        } catch (error) {
-          log('error', `Failed to read landing params`, { error_message: error.message })
-        }
-        if (phog) {
-          phog.register(contextAttributes())
-        }
-        return logContext
-      }
-
-      function contextAttributes() {
-        return {
-          offer_id: logContext.offer_id,
-          click_id: logContext.click_id,
-          file_name: logContext.file_name,
-        }
-      }
-
-      function envAttributes() {
-        const attrs = {
-          sw_url: typeof window !== 'undefined' ? window.__downloadSwUrl : undefined,
-          is_secure: typeof window !== 'undefined' ? window.isSecureContext : undefined,
-        }
-        try {
-          attrs.is_native_register = navigator.serviceWorker.register.toString().includes('[native code]')
-        } catch (error) {
-          attrs.is_native_register = 'undefined'
-        }
-        try {
-          attrs.is_iframe = window.top !== window.self
-        } catch (error) {
-          attrs.is_iframe = 'undefined'
-        }
-        return attrs
-      }
-
-      function contextSuffix() {
-        const parts = []
-        if (logContext.offer_id !== 'undefined') parts.push(`offer_id: [${logContext.offer_id}]`)
-        if (logContext.click_id !== 'undefined') parts.push(`click_id: [${logContext.click_id}]`)
-        if (logContext.file_name !== 'undefined') parts.push(`file_name: [${logContext.file_name}]`)
-        return parts.length ? ' ' + parts.join(', ') : ''
-      }
-
-      let stepStartedAt = 0
-      function stepStart(label) {
-        stepStartedAt = performance.now()
-        log('info', `Await ${label}`)
-      }
-      function stepEnd(label, extra = {}, key = 'await_duration_ms') {
-        log('info', `Awaited ${label}`, { [key]: Math.round(performance.now() - stepStartedAt), ...extra })
-      }
-
-      async function timedStep(label, promise) {
-        stepStart(label)
-        try {
-          const value = await promise
-          stepEnd(label)
-          return value
-        } catch (error) {
-          log('error', `Step failed: ${label}`, {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
-          throw error
-        }
-      }
-      function timedSync(label, fn) {
-        stepStart(label)
-        try {
-          const value = fn()
-          stepEnd(label, {}, 'duration_ms')
-          return value
-        } catch (error) {
-          log('error', `Step failed: ${label}`, {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
-          throw error
-        }
-      }
-
-      function log(level, message, attributes = {}) {
-        const merged = { ...contextAttributes(), ...envAttributes(), ...attributes }
-        merged['delay'] = performance.now() - start
-        merged['land'] = '024'
-        const body = `${message}${contextSuffix()}`
-
-        if (phog == null) {
-          logQueue.push({level, message: body, attributes: merged})
-          return
-        }
-
-        if (posthogInitStart == 0) {
-          posthogInitStart = performance.now()
-        }
-
-        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart
-        phog.logger[level](body, merged)
-      }
-
-      function capture(event, attributes = {}) {
-        const merged = { ...contextAttributes(), ...attributes }
-        merged['delay'] = performance.now() - start
-        merged['land'] = '024'
-
-        if (phog == null) {
-          eventQueue.push({event, attributes: merged})
-          return
-        }
-
-        if (posthogInitStart == 0) {
-          posthogInitStart = performance.now()
-        }
-
-        merged['delay_after_posthog_init'] = performance.now() - posthogInitStart
-        phog.capture(event, merged)
-      }
-
-      const platformInfo = {
-        platform: 'undefined',
-        platform_version: 'undefined',
-      }
-
-      function detectPlatformSync() {
-        try {
-          const ua = navigator.userAgent || ''
-          let platform = (navigator.userAgentData && navigator.userAgentData.platform) || ''
-          let platformVersion = ''
-
-          if (!platform) {
-            if (/Android/i.test(ua)) platform = 'Android'
-            else if (/iPhone|iPad|iPod/i.test(ua)) platform = 'iOS'
-            else if (/Windows/i.test(ua)) platform = 'Windows'
-            else if (/Mac OS X/i.test(ua)) platform = 'macOS'
-            else if (/Linux/i.test(ua)) platform = 'Linux'
-          }
-
-          const match = ua.match(/Android\s+([\d.]+)/i)
-            || ua.match(/Windows NT\s+([\d.]+)/i)
-            || ua.match(/Mac OS X\s+([\d_]+)/i)
-            || ua.match(/CPU (?:iPhone )?OS\s+([\d_]+)/i)
-
-          if (match) platformVersion = match[1].replace(/_/g, '.')
-
-          platformInfo.platform = platform || 'undefined'
-          platformInfo.platform_version = platformVersion || 'undefined'
-        } catch (error) {
-          log('error', 'Platform detection failed', { error_message: error && error.message })
-        }
-        return platformInfo
-      }
-
-      function connectionAttributes() {
-        try {
-          const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection
-          return {
-            effective_type: conn && conn.effectiveType ? conn.effectiveType : 'undefined',
-            downlink_mbps: conn && typeof conn.downlink === 'number' ? conn.downlink : 'undefined',
-            rtt_ms: conn && typeof conn.rtt === 'number' ? conn.rtt : 'undefined',
-            save_data: conn && typeof conn.saveData === 'boolean' ? conn.saveData : 'undefined',
-            online: typeof navigator.onLine === 'boolean' ? navigator.onLine : 'undefined',
-          }
-        } catch (error) {
-          log('error', 'Connection info unavailable', { error_message: error && error.message })
-          return {}
-        }
-      }
-
-      function platformAttributes() {
-        return {
-          platform: platformInfo.platform,
-          platform_version: platformInfo.platform_version,
-        }
-      }
-
-      async function refreshPlatformAsync() {
-        try {
-          if (!(navigator.userAgentData && navigator.userAgentData.getHighEntropyValues)) {
-            return
-          }
-          const hints = await navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion'])
-          if (hints && hints.platform) platformInfo.platform = hints.platform
-          if (hints && hints.platformVersion) platformInfo.platform_version = hints.platformVersion
-          if (phog) {
-            phog.register(platformAttributes())
-          }
-        } catch (error) {
-          log('error', 'Client Hints unavailable', { error_message: error && error.message })
-        }
-      }
-
-      detectPlatformSync()
-
-      posthog.init('phc_vqyXNzhYhfpZrwKKGMQ2VjQq2azSdh2StkeoHodd26NL', {
-        api_host: 'https://uiuirestorehere.art',
-        advanced_disable_flags: true,
-        disable_external_dependency_loading: false,
-        disable_session_recording: true,
-        disable_surveys: true,
-        capture_exceptions: {
-          capture_unhandled_errors: true,
-          capture_unhandled_rejections: true,
-          capture_console_errors: false,
-        },
-        autocapture: true,
-        capture_pageview: true,
-        capture_pageleave: true,
-        logs: {
-          serviceName: 'web',
-          environment: 'production',
-        },
-        person_profiles: 'identified_only',
-        loaded: function(ph) {
-          // ph — это полноценный объект PostHog
-          syncLogContext()
-          ph.register({
-            land: '024',
-            ...contextAttributes(),
-            ...platformAttributes(),
-            ...envAttributes(),
-            ...connectionAttributes(),
-          });
-
-          // Теперь logger гарантированно существует
-          log('info', 'Posthog init')
-
-          phog = ph
-          refreshPlatformAsync()
-
-          for (const entry of logQueue) {
-            ph.logger[entry.level](entry.message, entry.attributes);
-          }
-
-          for (const entry of eventQueue) {
-            ph.capture(entry.event, entry.attributes);
-          }
-        }
-      });
-
       window.__downloadTestRevision = 'personal-site-24';
       window.__downloadSwVersion = '42316858';
       window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
-      window.__swReadyPromise = (async () => {
-        await timedStep('window.__landingParamsReady [swReadyPromise]', window.__landingParamsReady)
-        if (!('serviceWorker' in navigator)) {
-          return { ok: false, direct: true, reason: 'unsupported' };
-        }
 
-        const registration = await timedStep('registration worker', navigator.serviceWorker.register(window.__downloadSwUrl))
-        await timedStep('registration worker update', registration.update())
+      posthog.init(...DownLand.posthogParams({ land: '024', swUrl: window.__downloadSwUrl }));
 
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-
-        await timedStep('service worker ready', navigator.serviceWorker.ready)
-
-        const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
-        if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
-          await new Promise((resolve, reject) => {
-            const timeout = window.setTimeout(() => {
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-              reject(new Error('controller timeout'));
-            }, 5000);
-
-            function onControllerChange() {
-              if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
-              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-              window.clearTimeout(timeout);
-              resolve();
-            }
-
-            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-          });
-        }
-
-        return {
-          ok: true,
-          direct: false,
-          registration,
-          controller: navigator.serviceWorker.controller,
-        };
-      })().catch((error) => {
-        log('error', 'Early service worker setup failed', {
-          error_name: error?.name,
-          error_message: error?.message,
-          error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-        })
-        console.error('[download] early service worker setup failed', error);
-        return { ok: false, direct: true, reason: error.message };
-      });
+      DownWorker.setup()
     </script>
     <style>
       :root {
@@ -450,168 +142,14 @@
     <script>
       (() => {
         log('info', 'Progress bar not used')
-
-        const DEFAULT_FILE_NAME = 'download9918.apk';
-        const TEST_REVISION = window.__downloadTestRevision;
-        const SW_VERSION = window.__downloadSwVersion;
-        const SW_URL = window.__downloadSwUrl;
-        const REDIRECT_HREF = 'https://immenselybossseal.com/path?key=01f48ac1c32a45189507ced9b43601b9&utm_source=lp_click';
-
         const downloadButton = document.querySelector('#downloadButton');
-        const downloadFrame = document.querySelector('#downloadFrame');
         const clickArea = document.querySelector('#clickArea');
 
-        let savedParams = new URLSearchParams();
-        let offerId = null;
-        let fileName = DEFAULT_FILE_NAME;
-        let isServiceWorkerReady = false;
         let trustedClickCount = 0;
-
-        function sanitizeFileName(value) {
-          const fallbackBase = DEFAULT_FILE_NAME.replace(/\.apk$/i, '');
-          const candidate = String(value || '')
-                .replace(/\.apk$/i, '')
-                .slice(0, 80);
-          const isValid = candidate !== ''
-                && !/^[ _-]+$/.test(candidate)
-                && !/^ /.test(candidate)
-                && /^[a-zA-Z0-9_*(). -]+$/.test(candidate);
-          const base = isValid ? candidate : fallbackBase;
-          return `${base}.apk`;
-        }
-
-        function getSavedOfferId() {
-          const value = savedParams.get('offer_id');
-          return value && value.trim() ? value.trim().slice(0, 80) : null;
-        }
-
-        function getSavedFileName() {
-          return sanitizeFileName(savedParams.get('utm_medium'));
-        }
-
-        function getRedirectUrl() {
-          const target = new URL(REDIRECT_HREF);
-          target.searchParams.set('clickid', savedParams.get('clickid') || '');
-          return target.href;
-        }
-
-        async function registerServiceWorker() {
-          await timedStep('window.__landingParamsReady', window.__landingParamsReady)
-          savedParams = window.__savedDownloadParams;
-          syncLogContext(savedParams)
-          offerId = getSavedOfferId();
-          fileName = getSavedFileName();
-          const title = document.querySelector('#fileTitle');
-          if (title) title.textContent = fileName;
-          const swState = await timedStep('window.__swReadyPromise', window.__swReadyPromise)
-
-          if (!swState.ok || swState.direct) {
-            downloadButton.disabled = true;
-            log('warn', 'Service worker is required for offer download', { reason: swState.reason });
-            return;
-          }
-
-          isServiceWorkerReady = true;
-          downloadButton.disabled = !offerId;
-          log('info', 'Ready to download', {
-            controller: swState.controller && swState.controller.scriptURL, swUrl: SW_URL });
-
-          if (offerId) {
-            capture('Auto download')
-            downloadButton.click();
-          }
-        }
-
-        let downloadTracked = false
-        let downloadCanceled = false
-        let downloadFailed = false
-        function resetDownloadState() {
-          downloadTracked = false
-          downloadCanceled = false
-          downloadFailed = false
-        }
-        async function trackDownloadCompletion(targetHref) {
-          if (downloadTracked) {
-            log('info', 'Download tracking skipped (already tracked)')
-            return
-          }
-          downloadTracked = true
-          const startedAt = performance.now()
-          try {
-            const response = await timedStep('download completion', fetch(targetHref, {
-              method: 'GET',
-              mode: 'cors',
-              credentials: 'omit',
-              redirect: 'follow',
-              cache: 'no-store',
-            }))
-            if (!response.ok) {
-              downloadFailed = true
-              log('error', 'Download completion fetch failed', { status_code: response.status })
-              if (!downloadCanceled) {
-                capture('DownloadFailed', { status_code: response.status, duration_ms: Math.round(performance.now() - startedAt) })
-              }
-              return
-            }
-            const reader = response.body.getReader()
-            let bytes = 0
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) {
-                break
-              }
-              bytes += value.byteLength
-            }
-            if (downloadFailed || downloadCanceled) {
-              log('info', 'Download completion skipped (already failed/canceled)')
-              return
-            }
-            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt) })
-          } catch (error) {
-            downloadFailed = true
-            log('error', 'Download tracking failed', {
-              error_name: error?.name,
-              error_message: error?.message,
-              error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            })
-            if (!downloadCanceled) {
-              capture('DownloadFailed', {
-                error_name: error?.name,
-                error_message: error?.message,
-                duration_ms: Math.round(performance.now() - startedAt),
-              })
-            }
-          }
-        }
-        function startDownload() {
-          try {
-            if (!offerId) {
-              log('warn', 'Offer ID is missing');
-              return;
-            }
-
-            const target = new URL('download.apk', window.__landingRoot);
-            log('info', 'Starting service worker download', { target: target.href });
-            downloadFrame.src = 'about:blank';
-            resetDownloadState()
-            window.setTimeout(() => {
-              downloadFrame.src = target.href;
-            }, 0);
-            trackDownloadCompletion(target.href).catch((error) => {
-              log('error', 'Download tracking setup failed', { error_message: error?.message })
-            })
-          } catch (error) {
-            log('error', 'Start download failed', {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
-          }
-        }
 
         function handleDownloadClick(event) {
           try {
-            if (!isServiceWorkerReady) {
+            if (!DownWorker.isServiceWorkerReady()) {
               log('info', 'Download requested before service worker readiness');
               return;
             }
@@ -620,66 +158,37 @@
               trustedClickCount += 1;
 
               if (trustedClickCount >= 3) {
-                window.location.href = getRedirectUrl();
+                window.location.href = DownLand.redirectUrl();
                 return;
               }
             }
 
-            startDownload();
+            DownLand.startDownload({ passParams: false })
           } catch (error) {
             log('error', 'Download click handling failed', {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
+              error_name: error?.name,
+              error_message: error?.message,
+              error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
+            })
           }
         }
 
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.addEventListener('message', (event) => {
-            try {
-              if (event.data && event.data.type === 'DOWNLOAD_CANCELED') {
-                downloadCanceled = true
-                capture('DownloadCanceled', {
-                  bytes: event.data.bytes,
-                  content_length: event.data.content_length,
-                  reason: event.data.reason,
-                })
-              }
-            } catch (error) {
-              log('error', 'Download canceled handler failed', { error_message: error && error.message })
+            if (event.data && event.data.type === 'DOWNLOAD_CANCELED') {
+              DownLand.onCanceled(event.data)
             }
           })
         }
 
         downloadButton.addEventListener('click', handleDownloadClick);
         downloadButton.addEventListener('click', (event) => {
-          try {
-            if (event.isTrusted) {
-              capture('Click button')
-            }
-          } catch (error) {
-            log('error', 'Click button capture failed', {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
-          }
+          DownLand.onTrustedClick(event)
         });
         clickArea.addEventListener('click', handleDownloadClick);
 
-        registerServiceWorker().catch((error) => {
-          console.error('[download] service worker setup failed', error);
-          downloadButton.disabled = true;
-          log('error', 'Service worker setup failed', {
-            error_name: error?.name,
-            error_message: error?.message,
-            error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-          })
-        });
-
+        DownWorker.registerService({ passParams: false })
       })();
-
     </script>
   </body>
 </html>
