@@ -195,7 +195,7 @@ function createApkState(offerId, params, requestKey) {
     const response = await fetch(sourceUrl.href, {
       method: 'GET',
       mode: 'cors',
-      credentials: 'omit',
+      credentials: 'include',
       redirect: 'follow',
     });
 
