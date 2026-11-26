@@ -40,6 +40,7 @@
     let downloadFailed = false;
     let downloadId = 'undefined';
     let downloadCompleted = false;
+    let downloadStartedAt = 0;
 
     function makeDownloadId() {
         try {
@@ -387,7 +388,13 @@
     function markDownloadAttempt() {
         resetDownload();
         downloadId = makeDownloadId();
+        downloadStartedAt = performance.now();
         return downloadId;
+    }
+
+    // Time from the start of this download attempt to now.
+    function downloadDelay() {
+        return downloadStartedAt ? Math.round(performance.now() - downloadStartedAt) : 'undefined';
     }
 
     // Poor user network: these thresholds split "user's bad connection" from
@@ -545,7 +552,7 @@
                 const reasonAttrs = failureReasonAttributes({ ...details, attempt_id: attemptId });
                 log('error', 'Download completion fetch failed', { ...details, ...reasonAttrs });
                 if (!downloadCanceled) {
-                    capture('DownloadFailed', { ...details, ...reasonAttrs, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+                    capture('DownloadFailed', { ...details, ...reasonAttrs, duration_ms: Math.round(performance.now() - startedAt), download_delay: downloadDelay(), download_id: attemptId });
                 }
                 return;
             }
@@ -572,7 +579,7 @@
             }
 
             downloadCompleted = true;
-            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+            capture('Downloaded', { bytes, duration_ms: Math.round(performance.now() - startedAt), download_delay: downloadDelay(), download_id: attemptId });
         } catch (error) {
             downloadFailed = true;
 
@@ -601,6 +608,7 @@
                     ...diag,
                     ...reasonAttrs,
                     duration_ms: Math.round(performance.now() - startedAt),
+                    download_delay: downloadDelay(),
                     download_id: attemptId,
                 }));
             }, 250);
@@ -692,6 +700,7 @@
         posthogParams,
         log,
         capture,
+        errorAttributes,
         timedStep,
         timedSync,
         stepStart,
@@ -716,6 +725,7 @@
     window.DownLand = DownLand;
     window.log = log;
     window.capture = capture;
+    window.errorAttributes = errorAttributes;
     window.timedStep = timedStep;
     window.timedSync = timedSync;
     window.stepStart = stepStart;

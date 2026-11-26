@@ -10,12 +10,16 @@
     <script src="../js/worker.js"></script>
     <script>
       window.__downloadTestRevision = 'personal-site-22';
-      window.__downloadSwVersion = '42316902';
+      window.__downloadSwVersion = '42316903';
       window.__downloadSwUrl = `${window.__landingRoot}sw4.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
 
-      posthog.init(...DownLand.posthogParams({ land: '022', swUrl: window.__downloadSwUrl }));
-
       DownWorker.setup()
+
+      try {
+        posthog.init(...DownLand.posthogParams({ land: '022', swUrl: window.__downloadSwUrl }));
+      } catch (error) {
+        log('error', 'Posthog init failed', errorAttributes(error));
+      }
     </script>
     <style>
      * {
