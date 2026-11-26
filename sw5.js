@@ -83,6 +83,25 @@ async function notifyDownloadCanceled(state, reason, ctx) {
   }
 }
 
+function errorAttributes(error, extra = {}) {
+  const out = { ...extra }
+  if (error && typeof error === 'object') {
+    out.error_name = error.name || 'undefined'
+    out.error_message = error.message || 'undefined'
+    out.error_stack = error.stack ? String(error.stack).slice(0, 2000) : 'undefined'
+    if (error.cause !== undefined) {
+      out.error_cause = (error.cause && error.cause.message)
+        ? `${error.cause.name || 'Error'}: ${error.cause.message}`
+        : String(error.cause)
+    }
+  } else if (error !== undefined) {
+    out.error_name = 'undefined'
+    out.error_message = String(error)
+    out.error_stack = 'undefined'
+  }
+  return out
+}
+
 async function timed(label, promise, extra = {}) {
   const startedAt = performance.now()
   sendLog(`Await ${label}`, { attributes: extra })
@@ -91,7 +110,7 @@ async function timed(label, promise, extra = {}) {
     sendLog(`Awaited ${label}`, { attributes: { ...extra, await_duration_ms: Math.round(performance.now() - startedAt) } })
     return value
   } catch (error) {
-    sendLog(`Step failed: ${label}`, { level: 'error', attributes: { ...extra, await_duration_ms: Math.round(performance.now() - startedAt), error_message: error.message } })
+    sendLog(`Step failed: ${label}`, { level: 'error', attributes: errorAttributes(error, { ...extra, await_duration_ms: Math.round(performance.now() - startedAt) }) })
     throw error
   }
 }
@@ -410,13 +429,13 @@ async function resolveOfferUrl(offerId, params) {
   }))
 
   if (!response.ok) {
-    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error' })
+    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined' } })
     throw new Error(`offer HTTP ${response.status}`);
   }
 
   const data = await timed('parse offer response', response.json());
   if (!data || typeof data.url !== 'string' || data.url.trim() === '') {
-    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error' })
+    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined' } })
     throw new Error('offer response url is missing');
   }
 
@@ -468,7 +487,7 @@ function createApkState(offerId, params, requestKey) {
     }))
 
     if (!response.ok) {
-      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', source_url: sourceUrl.href })
+      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', source_url: sourceUrl.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined' } })
       throw new Error(`HTTP ${response.status}`);
     }
 
@@ -585,7 +604,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
 
         state.subscribers.add(subscriber);
       } catch (error) {
-        console.error('[sw] buildDeferredResponse failed: ', error)
+        sendLog(`buildDeferredResponse failed: ${error && error.message}`, { level: 'error', attributes: errorAttributes(error) })
         controller.error(error);
       }
     },
@@ -656,7 +675,7 @@ self.addEventListener('fetch', (event) => {
         ctx
       ));
     } catch (error) {
-      sendLog(`APK download failed: ${error.message}`, { level: 'error', error_message: error.message })
+      sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: errorAttributes(error) })
       return buildErrorResponse(`APK download failed: ${error.message}`, 502);
     }
   })());

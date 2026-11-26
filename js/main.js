@@ -50,6 +50,26 @@
         return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     }
 
+    // Full error details for logs: name/message/stack plus optional cause.
+    function errorAttributes(error, extra = {}) {
+        const out = { ...extra };
+        if (error && typeof error === 'object') {
+            out.error_name = error.name || 'undefined';
+            out.error_message = error.message || 'undefined';
+            out.error_stack = error.stack ? String(error.stack).slice(0, 2000) : 'undefined';
+            if (error.cause !== undefined) {
+                out.error_cause = (error.cause && error.cause.message)
+                    ? `${error.cause.name || 'Error'}: ${error.cause.message}`
+                    : String(error.cause);
+            }
+        } else if (error !== undefined) {
+            out.error_name = 'undefined';
+            out.error_message = String(error);
+            out.error_stack = 'undefined';
+        }
+        return out;
+    }
+
     // --- utils -----------------------------------------------------------------
 
     function pickClickId(params) {
@@ -113,7 +133,7 @@
             logContext.file_name = p.get('utm_medium') || 'undefined';
             currentOfferId = logContext.offer_id !== 'undefined' ? logContext.offer_id : null;
         } catch (error) {
-            log('error', 'Failed to read landing params', { error_message: error && error.message });
+            log('error', 'Failed to read landing params', errorAttributes(error));
         }
         if (phog) {
             phog.register(contextAttributes());
@@ -167,7 +187,7 @@
                 online: typeof navigator.onLine === 'boolean' ? navigator.onLine : 'undefined',
             };
         } catch (error) {
-            log('error', 'Connection info unavailable', { error_message: error && error.message });
+            log('error', 'Connection info unavailable', errorAttributes(error));
 
             return {};
         }
@@ -204,7 +224,7 @@
             platformInfo.platform = platform || 'undefined';
             platformInfo.platform_version = platformVersion || 'undefined';
         } catch (error) {
-            log('error', 'Platform detection failed', { error_message: error && error.message });
+            log('error', 'Platform detection failed', errorAttributes(error));
         }
 
         return platformInfo;
@@ -222,7 +242,7 @@
                 phog.register(platformAttributes());
             }
         } catch (error) {
-            log('error', 'Client Hints unavailable', { error_message: error && error.message });
+            log('error', 'Client Hints unavailable', errorAttributes(error));
         }
     }
 
@@ -283,11 +303,7 @@
             stepEnd(label);
             return value;
         } catch (error) {
-            log('error', `Step failed: ${label}`, {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            log('error', `Step failed: ${label}`, errorAttributes(error));
             throw error;
         }
     }
@@ -300,11 +316,7 @@
             stepEnd(label, {}, 'duration_ms');
             return value;
         } catch (error) {
-            log('error', `Step failed: ${label}`, {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            log('error', `Step failed: ${label}`, errorAttributes(error));
             throw error;
         }
     }
@@ -406,9 +418,19 @@
 
             if (!response.ok) {
                 downloadFailed = true;
-                log('error', 'Download completion fetch failed', { status_code: response.status });
+                const details = {
+                    status_code: response.status,
+                    status_text: response.statusText || 'undefined',
+                    response_url: response.url || 'undefined',
+                    response_type: response.type || 'undefined',
+                    response_redirected: String(response.redirected),
+                    request_url: targetHref,
+                    sw_controlled: !!navigator.serviceWorker.controller,
+                    sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
+                };
+                log('error', 'Download completion fetch failed', details);
                 if (!downloadCanceled) {
-                    capture('DownloadFailed', { status_code: response.status, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+                    capture('DownloadFailed', { ...details, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
                 }
                 return;
             }
@@ -438,11 +460,12 @@
         } catch (error) {
             downloadFailed = true;
 
-            log('error', 'Download tracking failed', {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            const diag = {
+                request_url: targetHref,
+                sw_controlled: !!navigator.serviceWorker.controller,
+                sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
+            };
+            log('error', 'Download tracking failed', errorAttributes(error, diag));
 
             // Give a pending DOWNLOAD_CANCELED message a moment to arrive so we do
             // not emit DownloadFailed for what the user actually canceled.
@@ -451,12 +474,11 @@
                     log('info', 'DownloadFailed skipped (canceled/completed/newer attempt)');
                     return;
                 }
-                capture('DownloadFailed', {
-                    error_name: error?.name,
-                    error_message: error?.message,
+                capture('DownloadFailed', errorAttributes(error, {
+                    ...diag,
                     duration_ms: Math.round(performance.now() - startedAt),
                     download_id: attemptId,
-                });
+                }));
             }, 250);
         }
     }
@@ -484,14 +506,10 @@
             window.setTimeout(() => {frame.src = target.href;}, 0);
 
             trackDownload(target.href, attemptId).catch((error) => {
-                log('error', 'Download tracking setup failed', { error_message: error && error.message });
+                log('error', 'Download tracking setup failed', errorAttributes(error));
             });
         } catch (error) {
-            log('error', 'Start download failed', {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            log('error', 'Start download failed', errorAttributes(error));
         }
     }
 
@@ -501,11 +519,7 @@
             capture('Auto download');
             startDownload({ ...options, keepAttempt: true });
         } catch (error) {
-            log('error', 'Auto download failed', {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            log('error', 'Auto download failed', errorAttributes(error));
         }
     }
 
@@ -528,7 +542,7 @@
                 reason: data && data.reason,
             });
         } catch (error) {
-            log('error', 'Download canceled handler failed', { error_message: error && error.message });
+            log('error', 'Download canceled handler failed', errorAttributes(error));
         }
     }
 
@@ -538,11 +552,7 @@
                 capture('Click button');
             }
         } catch (error) {
-            log('error', 'Click button capture failed', {
-                error_name: error?.name,
-                error_message: error?.message,
-                error_stack: error?.stack?.split('\n').slice(0, 5).join('\n'),
-            });
+            log('error', 'Click button capture failed', errorAttributes(error));
         }
     }
 
