@@ -542,10 +542,10 @@
             if (!response.ok) {
                 downloadFailed = true;
                 const details = downloadDiag(attempt, targetHref);
-                const reason = failureReason({ ...details, attempt_id: attemptId });
-                log('error', 'Download completion fetch failed', { ...details, reason });
+                const reasonAttrs = failureReasonAttributes({ ...details, attempt_id: attemptId });
+                log('error', 'Download completion fetch failed', { ...details, ...reasonAttrs });
                 if (!downloadCanceled) {
-                    capture('DownloadFailed', { ...details, reason, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+                    capture('DownloadFailed', { ...details, ...reasonAttrs, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
                 }
                 return;
             }
