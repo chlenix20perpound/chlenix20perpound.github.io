@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Download</title>
     <script src="../params.js?v=personal-site-28"></script>
-    <script src="../js/main.js?v=42316907"></script>
-    <script src="../js/worker.js?v=42316907"></script>
+    <script src="../js/main.js?v=42316912"></script>
+    <script src="../js/worker.js?v=42316912"></script>
     <script>
       window.__downloadTestRevision = 'personal-site-28';
-      window.__downloadSwVersion = '42316907';
+      window.__downloadSwVersion = '42316912';
       window.__downloadSwUrl = `${window.__landingRoot}sw5.js?v=${window.__downloadSwVersion}&r=${window.__downloadTestRevision}`;
 
       DownWorker.setup()
@@ -127,8 +127,16 @@
 
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'DOWNLOAD_CANCELED') {
-              DownLand.onCanceled(event.data)
+            const data = event.data
+            if (!data) {
+              return
+            }
+            if (data.type === 'DOWNLOAD_CANCELED') {
+              DownLand.onCanceled(data)
+            } else if (data.type === 'DOWNLOAD_DONE') {
+              DownLand.onDownloadDone(data)
+            } else if (data.type === 'DOWNLOAD_FAILED') {
+              DownLand.onDownloadFailed(data)
             }
           })
         }

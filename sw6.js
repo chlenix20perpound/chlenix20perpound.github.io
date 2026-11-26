@@ -45,6 +45,60 @@ function contextSuffix() {
   return parts.length ? ' ' + parts.join(', ') : ''
 }
 
+async function notifyPage(ctx, payload) {
+  try {
+    const message = {
+      ...payload,
+      offer_id: logContext.offer_id,
+      click_id: logContext.click_id,
+      file_name: logContext.file_name,
+    }
+
+    // Download navigation requests often arrive with an empty clientId, so the
+    // exact client cannot be addressed. Fall back to broadcasting to all page
+    // clients; every landing filters messages by download_id.
+    const clientId = ctx && ctx.clientId
+    if (clientId) {
+      let client = null
+      try {
+        client = await self.clients.get(clientId)
+      } catch (error) {
+        console.error('[sw] clients.get failed', error)
+      }
+      if (client) {
+        client.postMessage(message)
+        return
+      }
+      sendLog(`Notify page: client not found, broadcasting [${payload && payload.type}]`, { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+    }
+
+    let clients = []
+    try {
+      clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    } catch (error) {
+      console.error('[sw] clients.matchAll failed', error)
+    }
+
+    let delivered = 0
+    for (const client of clients) {
+      try {
+        client.postMessage(message)
+        delivered += 1
+      } catch (error) {
+        console.error('[sw] client.postMessage failed', error)
+      }
+    }
+
+    if (delivered === 0) {
+      sendLog(`Cannot notify page: no clients [${payload && payload.type}]`, { level: 'error', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+    } else {
+      sendLog(`Notified page clients [${payload && payload.type}]`, { attributes: { download_id: (ctx && ctx.downloadId) || 'undefined', clients: delivered } })
+    }
+  } catch (error) {
+    console.error('[sw] notify page failed', error)
+  }
+}
+
 async function notifyDownloadCanceled(state, reason, ctx) {
   try {
     const attrs = {
@@ -428,6 +482,13 @@ async function pumpApkBody(state, response) {
         retries: attempt,
         duration_ms: Math.round(performance.now() - startedAt),
       } })
+      await notifyPage(state.ctx, {
+        type: 'DOWNLOAD_DONE',
+        bytes: state.bytes,
+        content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+        retries: attempt,
+        download_id: (state.ctx && state.ctx.downloadId) || 'undefined',
+      })
       notifySubscribers(state, 'close')
       state.subscribers.clear()
       return
@@ -461,6 +522,22 @@ async function pumpApkBody(state, response) {
       state.error = error
       apkError = error
       sendLog('Upstream apk stream failed', { level: 'error', attributes: { ...attrs, fail_reason: finalReason } })
+      await notifyPage(state.ctx, {
+        type: 'DOWNLOAD_FAILED',
+        reason: error.dl_reason || finalReason,
+        upstream_status_code: (error.dl_upstream_status === undefined || error.dl_upstream_status === null) ? 'undefined' : error.dl_upstream_status,
+        bytes: state.bytes,
+        chunk_count: state.chunkCount,
+        content_length: state.contentLength === null ? 'undefined' : state.contentLength,
+        percent: (isUsableContentLength(state.contentLength) && Number(state.contentLength) > 0)
+          ? Math.round((state.bytes / Number(state.contentLength)) * 100)
+          : 'undefined',
+        stream_failures: state.streamFailures,
+        retries: attempt,
+        error_name: (error && error.name) || 'undefined',
+        error_message: (error && error.message) || 'undefined',
+        download_id: (state.ctx && state.ctx.downloadId) || 'undefined',
+      })
       notifySubscribers(state, 'error', error)
       state.subscribers.clear()
       throw error
@@ -552,7 +629,7 @@ async function resolveOfferUrl(offerId, params) {
   return sourceUrl;
 }
 
-function createApkState(offerId, params, requestKey) {
+function createApkState(offerId, params, requestKey, ctx) {
   syncLogContext(params)
   sendLog(`Create APK state`)
   const state = {
@@ -570,6 +647,7 @@ function createApkState(offerId, params, requestKey) {
     streamFailures: 0,
   };
 
+  state.ctx = ctx || null;
   apkState = state;
   apkRequestKey = requestKey;
 
@@ -616,7 +694,7 @@ function createApkState(offerId, params, requestKey) {
   return state;
 }
 
-async function getApkState(offerId, params, requestKey) {
+async function getApkState(offerId, params, requestKey, ctx) {
   syncLogContext(params)
 
   if (apkRequestKey && apkRequestKey !== requestKey) {
@@ -630,7 +708,7 @@ async function getApkState(offerId, params, requestKey) {
   }
 
   if (!apkState) {
-    createApkState(offerId, params, requestKey);
+    createApkState(offerId, params, requestKey, ctx);
   }
 
   await timed('await apk promise', apkPromise);
@@ -674,7 +752,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
       try {
         controller.enqueue(PK_SIGNATURE)
 
-        state = await timed('get apk state', getApkState(offerId, params, requestKey));
+        state = await timed('get apk state', getApkState(offerId, params, requestKey, ctx));
 
         if (canceled) {
           sendLog('Stream canceled before first enqueue', { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
@@ -786,6 +864,7 @@ self.addEventListener('fetch', (event) => {
 
       if (!offerId || !offerId.trim()) {
         sendLog('Missing saved offer_id parameter', { level: 'error' })
+        await notifyPage(ctx, { type: 'DOWNLOAD_FAILED', reason: 'bad_request', download_id: downloadId })
         return buildErrorResponse('Missing saved offer_id parameter', 400, downloadId, null, 'bad_request');
       }
 
@@ -800,6 +879,14 @@ self.addEventListener('fetch', (event) => {
       const reason = (error && error.dl_reason) || 'network'
       const upstreamStatus = error && error.dl_upstream_status
       sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: { ...errorAttributes(error), fail_reason: reason, upstream_status_code: upstreamStatus === undefined ? 'undefined' : upstreamStatus } })
+      await notifyPage(ctx, {
+        type: 'DOWNLOAD_FAILED',
+        reason,
+        upstream_status_code: (upstreamStatus === undefined || upstreamStatus === null) ? 'undefined' : upstreamStatus,
+        error_name: (error && error.name) || 'undefined',
+        error_message: (error && error.message) || 'undefined',
+        download_id: downloadId,
+      })
       return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId, error, reason, upstreamStatus);
     }
   })());
