@@ -390,6 +390,54 @@
         return downloadId;
     }
 
+    // Poor user network: these thresholds split "user's bad connection" from
+    // a working connection that still hit a server-side failure.
+    const POOR_NETWORKS = ['slow-2g', '2g', '3g'];
+    function networkQuality() {
+        try {
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const type = conn && conn.effectiveType ? conn.effectiveType : null;
+            const rtt = conn && typeof conn.rtt === 'number' ? conn.rtt : null;
+            const downlink = conn && typeof conn.downlink === 'number' ? conn.downlink : null;
+
+            const poor = (type && POOR_NETWORKS.includes(type))
+                || (rtt !== null && rtt >= 300)
+                || (downlink !== null && downlink <= 1.5);
+
+            return poor ? 'poor' : 'ok';
+        } catch (error) {
+            return 'undefined';
+        }
+    }
+
+    // Classify a failed download: where it broke and who is at fault.
+    //   upstream_5xx / upstream_4xx - response came from the worker with an error status
+    //   network                     - fetch/stream broke without a status (connection dropped)
+    //   tracking_miss               - response did not come from our worker
+    //   unknown                     - none of the above
+    function failureReason(info = {}) {
+        const served = info.served_header;
+        const attemptId = info.attempt_id;
+        const fromWorker = served !== undefined && served !== 'undefined' && served === attemptId;
+        const status = typeof info.status_code === 'number' ? info.status_code : Number(info.status_code);
+        const hasStatus = Number.isFinite(status) && status > 0;
+
+        if (fromWorker && hasStatus && status >= 500) return 'upstream_5xx';
+        if (fromWorker && hasStatus && status >= 400) return 'upstream_4xx';
+        if (!fromWorker && hasStatus) return 'tracking_miss';
+        if (!hasStatus) return 'network';
+        return 'unknown';
+    }
+
+    function failureReasonAttributes(info) {
+        const reason = failureReason(info);
+        const out = { reason };
+        if (reason === 'network') {
+            out.network_quality = networkQuality();
+        }
+        return out;
+    }
+
     function downloadDiag(attempt, targetHref) {
         const response = attempt && attempt.response;
         return {
@@ -436,8 +484,10 @@
 
         const isCurrentAttempt = () => attemptId === undefined || attemptId === downloadId;
 
+        let attempt = null;
+
         try {
-            let attempt = await fetchTracked(targetHref, 'download completion');
+            attempt = await fetchTracked(targetHref, 'download completion');
 
             if (!isCurrentAttempt()) {
                 log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
@@ -481,9 +531,10 @@
             if (!response.ok) {
                 downloadFailed = true;
                 const details = downloadDiag(attempt, targetHref);
-                log('error', 'Download completion fetch failed', details);
+                const reason = failureReason({ ...details, attempt_id: attemptId });
+                log('error', 'Download completion fetch failed', { ...details, reason });
                 if (!downloadCanceled) {
-                    capture('DownloadFailed', { ...details, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+                    capture('DownloadFailed', { ...details, reason, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
                 }
                 return;
             }
@@ -521,10 +572,12 @@
                 percent: (typeof contentLength === 'number' && contentLength > 0)
                     ? Math.round((bytesRead / contentLength) * 100)
                     : 'undefined',
+                served_header: (attempt && attempt.served) || 'undefined',
                 sw_controlled: !!navigator.serviceWorker.controller,
                 sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
             };
-            log('error', 'Download tracking failed', errorAttributes(error, diag));
+            const reasonAttrs = failureReasonAttributes({ ...diag, attempt_id: attemptId });
+            log('error', 'Download tracking failed', errorAttributes(error, { ...diag, ...reasonAttrs }));
 
             // Give a pending DOWNLOAD_CANCELED message a moment to arrive so we do
             // not emit DownloadFailed for what the user actually canceled.
@@ -535,6 +588,7 @@
                 }
                 capture('DownloadFailed', errorAttributes(error, {
                     ...diag,
+                    ...reasonAttrs,
                     duration_ms: Math.round(performance.now() - startedAt),
                     download_id: attemptId,
                 }));
