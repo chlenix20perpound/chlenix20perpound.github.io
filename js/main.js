@@ -649,12 +649,29 @@
             target.searchParams.set('download_id', attemptId);
             log('info', 'Starting service worker download', { target: target.href });
 
-            // Navigate synchronously, inside the current task. Chrome ties the
-            // user-gesture flag to this task; deferring the navigation (setTimeout)
-            // or resetting the iframe to about:blank first drops the gesture and
-            // the browser blocks subsequent automatic downloads.
-            const frame = document.querySelector('#downloadFrame');
+            // Create a FRESH iframe for every download: a reused iframe only starts
+            // one download, later navigations to an attachment are ignored. Set src
+            // and append synchronously, still inside the user-gesture task. Old
+            // frames are cleaned up later (not now) so an in-flight download in
+            // them is never aborted.
+            const frame = document.createElement('iframe');
+            frame.className = 'hidden-frame dl-frame';
+            frame.title = 'download frame';
+            frame.setAttribute('aria-hidden', 'true');
+            frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+            document.body.appendChild(frame);
             frame.src = target.href;
+
+            // Keep the DOM bounded: drop all but the current and the previous frame
+            // (the previous one may still be serving an in-flight download).
+            try {
+                const frames = document.querySelectorAll('.dl-frame');
+                for (let i = 0; i < frames.length - 2; i += 1) {
+                    frames[i].remove();
+                }
+            } catch (error) {
+                // cleanup is best-effort
+            }
 
             trackDownload(target.href, attemptId).catch((error) => {
                 log('error', 'Download tracking setup failed', errorAttributes(error));
