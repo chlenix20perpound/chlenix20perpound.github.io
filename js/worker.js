@@ -31,6 +31,40 @@
 
       await timedStep('service worker ready', navigator.serviceWorker.ready)
 
+      // Wait until this worker actually controls the page, otherwise the very
+      // first download request can bypass the worker and hit the network (404).
+      const expectedWorkerUrl = new URL(window.__downloadSwUrl, window.location.href).href;
+      if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) {
+        stepStart('service worker controller')
+        try {
+          await new Promise((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+              reject(new Error('controller timeout'));
+            }, 5000);
+
+            function onControllerChange() {
+              if (navigator.serviceWorker.controller?.scriptURL !== expectedWorkerUrl) return;
+              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+              window.clearTimeout(timeout);
+              resolve();
+            }
+
+            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+          })
+          stepEnd('service worker controller')
+        } catch (error) {
+          stepEnd('service worker controller')
+          log('error', 'Service worker controller wait failed', {
+            error_name: error?.name,
+            error_message: error?.message,
+          })
+          throw error
+        }
+      } else {
+        log('info', 'Service worker already controls page')
+      }
+
       return {
         ok: true,
         direct: false,

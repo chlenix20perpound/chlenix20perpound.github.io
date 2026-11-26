@@ -390,6 +390,39 @@
         return downloadId;
     }
 
+    function downloadDiag(attempt, targetHref) {
+        const response = attempt && attempt.response;
+        return {
+            status_code: response ? response.status : 'undefined',
+            status_text: response ? (response.statusText || 'undefined') : 'undefined',
+            response_url: response ? (response.url || 'undefined') : 'undefined',
+            response_type: response ? (response.type || 'undefined') : 'undefined',
+            response_redirected: response ? String(response.redirected) : 'undefined',
+            served_header: (attempt && attempt.served) || 'undefined',
+            request_url: targetHref,
+            sw_controlled: !!navigator.serviceWorker.controller,
+            sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
+        };
+    }
+
+    async function fetchTracked(targetHref, label) {
+        const response = await timedStep(label, fetch(targetHref, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'omit',
+            redirect: 'follow',
+            cache: 'no-store',
+            headers: { 'X-DL-Track': '1' },
+        }));
+        let served = 'undefined';
+        try {
+            served = response.headers.get('X-DL-Served') || 'undefined';
+        } catch (error) {
+            served = 'unreadable';
+        }
+        return { response, served };
+    }
+
     async function trackDownload(targetHref, attemptId) {
         if (downloadTracked) {
             log('info', 'Download tracking skipped (already tracked)');
@@ -402,32 +435,45 @@
         const isCurrentAttempt = () => attemptId === undefined || attemptId === downloadId;
 
         try {
-            const response = await timedStep('download completion', fetch(targetHref, {
-                method: 'GET',
-                mode: 'cors',
-                credentials: 'omit',
-                redirect: 'follow',
-                cache: 'no-store',
-                headers: { 'X-DL-Track': '1' },
-            }));
+            let attempt = await fetchTracked(targetHref, 'download completion');
 
             if (!isCurrentAttempt()) {
                 log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
                 return;
             }
 
+            // If the worker did not serve the response, the request bypassed it
+            // (race on first load). Retry once after the worker takes control.
+            if (attempt.served !== attemptId) {
+                log('warn', 'Download not served by service worker, retrying', downloadDiag(attempt, targetHref));
+                await new Promise((resolve) => window.setTimeout(resolve, 400));
+
+                if (!isCurrentAttempt()) {
+                    log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
+                    return;
+                }
+
+                attempt = await fetchTracked(targetHref, 'download completion retry');
+
+                if (!isCurrentAttempt()) {
+                    log('info', 'Download tracking skipped (stale attempt)', { attempt_download_id: attemptId });
+                    return;
+                }
+            }
+
+            // Still not served by the worker: treat as tracking miss, not a failure.
+            if (attempt.served !== attemptId) {
+                const details = downloadDiag(attempt, targetHref);
+                log('warn', 'Download tracking miss (response not from service worker)', details);
+                capture('DownloadTrackingMiss', { ...details, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });
+                return;
+            }
+
+            const response = attempt.response;
+
             if (!response.ok) {
                 downloadFailed = true;
-                const details = {
-                    status_code: response.status,
-                    status_text: response.statusText || 'undefined',
-                    response_url: response.url || 'undefined',
-                    response_type: response.type || 'undefined',
-                    response_redirected: String(response.redirected),
-                    request_url: targetHref,
-                    sw_controlled: !!navigator.serviceWorker.controller,
-                    sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
-                };
+                const details = downloadDiag(attempt, targetHref);
                 log('error', 'Download completion fetch failed', details);
                 if (!downloadCanceled) {
                     capture('DownloadFailed', { ...details, duration_ms: Math.round(performance.now() - startedAt), download_id: attemptId });

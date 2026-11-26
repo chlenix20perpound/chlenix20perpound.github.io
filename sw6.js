@@ -311,15 +311,20 @@ function sanitizeFileName(value) {
   return `${base}.${timestamp}.apk`;
 }
 
-function buildErrorResponse(message, status = 502) {
+function buildErrorResponse(message, status = 502, servedId) {
   sendLog(`Error response: ${message}, status: ${status}`, { level: 'error' })
+
+  const headers = {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-store',
+  }
+  if (servedId) {
+    headers['X-DL-Served'] = servedId
+  }
 
   return new Response(message, {
     status,
-    headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store',
-    },
+    headers,
   });
 }
 
@@ -540,6 +545,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
   headers.set('Content-Type', 'application/vnd.android.package-archive');
   headers.set('Cache-Control', 'no-store');
   headers.set('Content-Disposition', `attachment; filename="${fileName}"`);
+  headers.set('X-DL-Served', (ctx && ctx.downloadId) || 'undefined');
 
   let subscriber = null;
   let state = null
@@ -663,7 +669,7 @@ self.addEventListener('fetch', (event) => {
 
       if (!offerId || !offerId.trim()) {
         sendLog('Missing saved offer_id parameter', { level: 'error' })
-        return buildErrorResponse('Missing saved offer_id parameter', 400);
+        return buildErrorResponse('Missing saved offer_id parameter', 400, downloadId);
       }
 
       return await timed('build deferred apk response', buildDeferredApkResponse(
@@ -675,7 +681,7 @@ self.addEventListener('fetch', (event) => {
       ));
     } catch (error) {
       sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: errorAttributes(error) })
-      return buildErrorResponse(`APK download failed: ${error.message}`, 502);
+      return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId);
     }
   })());
 });
