@@ -416,6 +416,11 @@
     //   tracking_miss               - response did not come from our worker
     //   unknown                     - none of the above
     function failureReason(info = {}) {
+        // The worker tells us the real reason via X-DL-Fail; prefer it over the
+        // synthetic 502 status it uses for its own failures.
+        const workerFail = info.worker_fail;
+        if (workerFail && workerFail !== 'undefined') return workerFail;
+
         const served = info.served_header;
         const attemptId = info.attempt_id;
         const fromWorker = served !== undefined && served !== 'undefined' && served === attemptId;
@@ -447,6 +452,8 @@
             response_type: response ? (response.type || 'undefined') : 'undefined',
             response_redirected: response ? String(response.redirected) : 'undefined',
             served_header: (attempt && attempt.served) || 'undefined',
+            worker_fail: (attempt && attempt.fail) || 'undefined',
+            upstream_status_code: (attempt && attempt.failStatus) || 'undefined',
             request_url: targetHref,
             sw_controlled: !!navigator.serviceWorker.controller,
             sw_controller_url: (navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL) || 'undefined',
@@ -463,12 +470,16 @@
             headers: { 'X-DL-Track': '1' },
         }));
         let served = 'undefined';
+        let fail = 'undefined';
+        let failStatus = 'undefined';
         try {
             served = response.headers.get('X-DL-Served') || 'undefined';
+            fail = response.headers.get('X-DL-Fail') || 'undefined';
+            failStatus = response.headers.get('X-DL-Fail-Status') || 'undefined';
         } catch (error) {
             served = 'unreadable';
         }
-        return { response, served };
+        return { response, served, fail, failStatus };
     }
 
     async function trackDownload(targetHref, attemptId) {

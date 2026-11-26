@@ -311,9 +311,24 @@ function sanitizeFileName(value) {
   return `${base}.${timestamp}.apk`;
 }
 
-function buildErrorResponse(message, status = 502, servedId, error) {
+function dlFail(message, reason, upstreamStatus) {
+  const error = new Error(message)
+  error.dl_reason = reason
+  if (upstreamStatus !== undefined && upstreamStatus !== null) {
+    error.dl_upstream_status = upstreamStatus
+  }
+  return error
+}
+
+function upstreamReason(status) {
+  return status >= 500 ? 'upstream_5xx' : 'upstream_4xx'
+}
+
+function buildErrorResponse(message, status = 502, servedId, error, reason, upstreamStatus) {
   sendLog(`Error response: ${message}, status: ${status}`, { level: 'error', attributes: {
     served_id: servedId || 'undefined',
+    fail_reason: reason || 'undefined',
+    upstream_status_code: (upstreamStatus === undefined || upstreamStatus === null) ? 'undefined' : upstreamStatus,
     ...errorAttributes(error),
   } })
 
@@ -323,6 +338,12 @@ function buildErrorResponse(message, status = 502, servedId, error) {
   }
   if (servedId) {
     headers['X-DL-Served'] = servedId
+  }
+  if (reason) {
+    headers['X-DL-Fail'] = reason
+  }
+  if (upstreamStatus !== undefined && upstreamStatus !== null) {
+    headers['X-DL-Fail-Status'] = String(upstreamStatus)
   }
 
   return new Response(message, {
@@ -455,19 +476,25 @@ async function resolveOfferUrl(offerId, params) {
   }))
 
   if (!response.ok) {
-    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined' } })
-    throw new Error(`offer HTTP ${response.status}`);
+    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
+    throw dlFail(`offer HTTP ${response.status}`, upstreamReason(response.status), response.status);
   }
 
-  const data = await timed('parse offer response', response.json());
+  let data
+  try {
+    data = await timed('parse offer response', response.json());
+  } catch (parseError) {
+    sendLog(`Offer response parse failed: ${parseError && parseError.message}`, { level: 'error', attributes: { request_url: endpoint.href, fail_reason: 'offer_invalid' } })
+    throw dlFail(`offer response parse failed: ${parseError && parseError.message}`, 'offer_invalid');
+  }
   if (!data || typeof data.url !== 'string' || data.url.trim() === '') {
-    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined' } })
-    throw new Error('offer response url is missing');
+    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', fail_reason: 'offer_invalid' } })
+    throw dlFail('offer response url is missing', 'offer_invalid');
   }
 
   const sourceUrl = new URL(fillOfferUrlTemplate(data.url, params));
   if (!['http:', 'https:'].includes(sourceUrl.protocol)) {
-    throw new Error('unsupported offer url protocol');
+    throw dlFail('unsupported offer url protocol', 'offer_invalid');
   }
 
   if (clickId) {
@@ -513,8 +540,8 @@ function createApkState(offerId, params, requestKey) {
     }))
 
     if (!response.ok) {
-      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', source_url: sourceUrl.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined' } })
-      throw new Error(`HTTP ${response.status}`);
+      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', source_url: sourceUrl.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
+      throw dlFail(`HTTP ${response.status}`, upstreamReason(response.status), response.status);
     }
 
     const contentLength = response.headers.get('content-length');
@@ -710,7 +737,7 @@ self.addEventListener('fetch', (event) => {
 
       if (!offerId || !offerId.trim()) {
         sendLog('Missing saved offer_id parameter', { level: 'error' })
-        return buildErrorResponse('Missing saved offer_id parameter', 400, downloadId);
+        return buildErrorResponse('Missing saved offer_id parameter', 400, downloadId, null, 'bad_request');
       }
 
       return await timed('build deferred apk response', buildDeferredApkResponse(
@@ -721,8 +748,10 @@ self.addEventListener('fetch', (event) => {
         ctx
       ));
     } catch (error) {
-      sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: errorAttributes(error) })
-      return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId, error);
+      const reason = (error && error.dl_reason) || 'network'
+      const upstreamStatus = error && error.dl_upstream_status
+      sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: { ...errorAttributes(error), fail_reason: reason, upstream_status_code: upstreamStatus === undefined ? 'undefined' : upstreamStatus } })
+      return buildErrorResponse(`APK download failed: ${error.message}`, 502, downloadId, error, reason, upstreamStatus);
     }
   })());
 });
