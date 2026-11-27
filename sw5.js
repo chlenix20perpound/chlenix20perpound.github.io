@@ -8,7 +8,6 @@ const logContext = {
   offer_id: 'undefined',
   click_id: 'undefined',
   file_name: 'undefined',
-  download_id: 'undefined',
 }
 
 function pickClickId(params) {
@@ -21,7 +20,6 @@ function syncLogContext(params) {
     logContext.offer_id = p.get('offer_id') || 'undefined'
     logContext.click_id = pickClickId(p) || 'undefined'
     logContext.file_name = p.get('utm_medium') || 'undefined'
-    logContext.download_id = p.get('download_id') || 'undefined'
   } catch (error) {
     console.error('[sw] failed to read params', error)
   }
@@ -33,7 +31,6 @@ function contextAttributes() {
     offer_id: logContext.offer_id,
     click_id: logContext.click_id,
     file_name: logContext.file_name,
-    download_id: logContext.download_id,
   }
 }
 
@@ -381,6 +378,7 @@ function upstreamReason(status) {
 function buildErrorResponse(message, status = 502, servedId, error, reason, upstreamStatus) {
   sendLog(`Error response: ${message}, status: ${status}`, { level: 'error', attributes: {
     served_id: servedId || 'undefined',
+    download_id: servedId || 'undefined',
     fail_reason: reason || 'undefined',
     upstream_status_code: (upstreamStatus === undefined || upstreamStatus === null) ? 'undefined' : upstreamStatus,
     ...errorAttributes(error),
@@ -466,7 +464,7 @@ async function pumpApkBody(state, response) {
           mode: 'cors',
           credentials: 'include',
           redirect: 'follow',
-        }))
+        }), { download_id: (state.ctx && state.ctx.downloadId) || 'undefined' })
         if (!current.ok) {
           throw dlFail(`retry HTTP ${current.status}`, upstreamReason(current.status), current.status)
         }
@@ -476,6 +474,7 @@ async function pumpApkBody(state, response) {
 
       state.done = true
       sendLog('Upstream apk stream completed', { attributes: {
+        download_id: (state.ctx && state.ctx.downloadId) || 'undefined',
         source_url: state.href || 'undefined',
         bytes: state.bytes,
         chunk_count: state.chunkCount,
@@ -497,6 +496,7 @@ async function pumpApkBody(state, response) {
       state.streamFailures = (state.streamFailures || 0) + 1
       const contentLength = Number(state.contentLength)
       const attrs = errorAttributes(error, {
+        download_id: (state.ctx && state.ctx.downloadId) || 'undefined',
         source_url: state.href || 'undefined',
         bytes: state.bytes,
         chunk_count: state.chunkCount,
@@ -578,11 +578,12 @@ function fillOfferUrlTemplate(value, params) {
   });
 }
 
-async function resolveOfferUrl(offerId, params) {
+async function resolveOfferUrl(offerId, params, ctx) {
   syncLogContext(params)
   const clickId = getClickId(params);
+  const downloadId = (ctx && ctx.downloadId) || 'undefined';
 
-  sendLog(`Resolve offer`)
+  sendLog(`Resolve offer`, { attributes: { download_id: downloadId } })
 
   const endpoint = new URL(OFFER_LINK_ENDPOINT);
   endpoint.searchParams.set('offer_id', offerId);
@@ -590,7 +591,7 @@ async function resolveOfferUrl(offerId, params) {
     endpoint.searchParams.set('click_id', clickId);
   }
 
-  sendLog(`Fetch endpoint, get url: [${endpoint.href}]`)
+  sendLog(`Fetch endpoint, get url: [${endpoint.href}]`, { attributes: { download_id: downloadId } })
   const response = await timed('fetch offer endpoint', fetch(endpoint.href, {
     method: 'GET',
     mode: 'cors',
@@ -599,22 +600,22 @@ async function resolveOfferUrl(offerId, params) {
     headers: {
       'Accept': 'application/json',
     },
-  }))
+  }), { download_id: downloadId })
 
   if (!response.ok) {
-    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
+    sendLog(`Fetch endpoint failed, status ${response.status}`, { level: 'error', attributes: { download_id: downloadId, status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
     throw dlFail(`offer HTTP ${response.status}`, upstreamReason(response.status), response.status);
   }
 
   let data
   try {
-    data = await timed('parse offer response', response.json());
+    data = await timed('parse offer response', response.json(), { download_id: downloadId });
   } catch (parseError) {
-    sendLog(`Offer response parse failed: ${parseError && parseError.message}`, { level: 'error', attributes: { request_url: endpoint.href, fail_reason: 'offer_invalid' } })
+    sendLog(`Offer response parse failed: ${parseError && parseError.message}`, { level: 'error', attributes: { download_id: downloadId, request_url: endpoint.href, fail_reason: 'offer_invalid' } })
     throw dlFail(`offer response parse failed: ${parseError && parseError.message}`, 'offer_invalid');
   }
   if (!data || typeof data.url !== 'string' || data.url.trim() === '') {
-    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', fail_reason: 'offer_invalid' } })
+    sendLog(`Offer response url is missing, status ${response.status}`, { level: 'error', attributes: { download_id: downloadId, status_code: response.status, status_text: response.statusText || 'undefined', request_url: endpoint.href, response_url: response.url || 'undefined', fail_reason: 'offer_invalid' } })
     throw dlFail('offer response url is missing', 'offer_invalid');
   }
 
@@ -632,7 +633,8 @@ async function resolveOfferUrl(offerId, params) {
 
 function createApkState(offerId, params, requestKey, ctx) {
   syncLogContext(params)
-  sendLog(`Create APK state`)
+  const downloadId = (ctx && ctx.downloadId) || 'undefined'
+  sendLog(`Create APK state`, { attributes: { download_id: downloadId } })
   const state = {
     offerId,
     href: null,
@@ -653,22 +655,22 @@ function createApkState(offerId, params, requestKey, ctx) {
   apkRequestKey = requestKey;
 
   apkPromise = (async () => {
-    const sourceUrl = await timed('resolve offer url', resolveOfferUrl(offerId, params));
+    const sourceUrl = await timed('resolve offer url', resolveOfferUrl(offerId, params, ctx), { download_id: downloadId });
     state.href = sourceUrl.href;
 
     syncLogContext(params)
 
-    sendLog(`Fetch sourceUrl: [${sourceUrl.href}]`)
+    sendLog(`Fetch sourceUrl: [${sourceUrl.href}]`, { attributes: { download_id: downloadId } })
 
     const response = await timed('fetch source apk', fetch(sourceUrl.href, {
       method: 'GET',
       mode: 'cors',
       credentials: 'include',
       redirect: 'follow',
-    }))
+    }), { download_id: downloadId })
 
     if (!response.ok) {
-      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', attributes: { status_code: response.status, status_text: response.statusText || 'undefined', source_url: sourceUrl.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
+      sendLog(`Source apk fetch failed, status ${response.status}`, { level: 'error', attributes: { download_id: downloadId, status_code: response.status, status_text: response.statusText || 'undefined', source_url: sourceUrl.href, response_url: response.url || 'undefined', response_type: response.type || 'undefined', fail_reason: upstreamReason(response.status) } })
       throw dlFail(`HTTP ${response.status}`, upstreamReason(response.status), response.status);
     }
 
@@ -697,14 +699,15 @@ function createApkState(offerId, params, requestKey, ctx) {
 
 async function getApkState(offerId, params, requestKey, ctx) {
   syncLogContext(params)
+  const downloadId = (ctx && ctx.downloadId) || 'undefined'
 
   if (apkRequestKey && apkRequestKey !== requestKey) {
-    sendLog("Reset APK state")
+    sendLog("Reset APK state", { attributes: { download_id: downloadId } })
     resetApkState();
   }
 
   if (apkError) {
-    sendLog("APK error, reset APK state", { level: "error" })
+    sendLog("APK error, reset APK state", { level: "error", attributes: { download_id: downloadId } })
     resetApkState();
   }
 
@@ -712,12 +715,13 @@ async function getApkState(offerId, params, requestKey, ctx) {
     createApkState(offerId, params, requestKey, ctx);
   }
 
-  await timed('await apk promise', apkPromise);
+  await timed('await apk promise', apkPromise, { download_id: downloadId });
   return apkState;
 }
 
 async function buildDeferredApkResponse(offerId, fileName, params, requestKey, ctx) {
   syncLogContext(params)
+  const downloadId = (ctx && ctx.downloadId) || 'undefined'
   const headers = new Headers();
   headers.set('Content-Type', 'application/vnd.android.package-archive');
   headers.set('Cache-Control', 'no-store');
@@ -753,10 +757,10 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
       try {
         controller.enqueue(PK_SIGNATURE)
 
-        state = await timed('get apk state', getApkState(offerId, params, requestKey, ctx));
+        state = await timed('get apk state', getApkState(offerId, params, requestKey, ctx), { download_id: downloadId });
 
         if (canceled) {
-          sendLog('Stream canceled before first enqueue', { level: 'warn', attributes: { download_id: (ctx && ctx.downloadId) || 'undefined' } })
+          sendLog('Stream canceled before first enqueue', { level: 'warn', attributes: { download_id: downloadId } })
           return;
         }
 
@@ -799,7 +803,7 @@ async function buildDeferredApkResponse(offerId, fileName, params, requestKey, c
         state.subscribers.add(subscriber);
       } catch (error) {
         if (!canceled) {
-          sendLog(`buildDeferredResponse failed: ${error && error.message}`, { level: 'error', attributes: errorAttributes(error) })
+          sendLog(`buildDeferredResponse failed: ${error && error.message}`, { level: 'error', attributes: { download_id: downloadId, ...errorAttributes(error) } })
           try {
             controller.error(error);
           } catch (ignored) {
@@ -855,7 +859,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     try {
-      const params = new URLSearchParams(await timed('read saved params', B1Params.read()));
+      const params = new URLSearchParams(await timed('read saved params', B1Params.read(), { download_id: downloadId }));
       params.set('download_id', downloadId)
 
       const offerId = params.get('offer_id');
@@ -864,7 +868,7 @@ self.addEventListener('fetch', (event) => {
       syncLogContext(params)
 
       if (!offerId || !offerId.trim()) {
-        sendLog('Missing saved offer_id parameter', { level: 'error' })
+        sendLog('Missing saved offer_id parameter', { level: 'error', attributes: { download_id: downloadId } })
         await notifyPage(ctx, { type: 'DOWNLOAD_FAILED', reason: 'bad_request', download_id: downloadId })
         return buildErrorResponse('Missing saved offer_id parameter', 400, downloadId, null, 'bad_request');
       }
@@ -875,11 +879,11 @@ self.addEventListener('fetch', (event) => {
         params,
         params.toString(),
         ctx
-      ));
+      ), { download_id: downloadId });
     } catch (error) {
       const reason = (error && error.dl_reason) || 'network'
       const upstreamStatus = error && error.dl_upstream_status
-      sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: { ...errorAttributes(error), fail_reason: reason, upstream_status_code: upstreamStatus === undefined ? 'undefined' : upstreamStatus } })
+      sendLog(`APK download failed: ${error.message}`, { level: 'error', attributes: { download_id: downloadId, ...errorAttributes(error), fail_reason: reason, upstream_status_code: upstreamStatus === undefined ? 'undefined' : upstreamStatus } })
       await notifyPage(ctx, {
         type: 'DOWNLOAD_FAILED',
         reason,
